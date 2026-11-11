@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="862" viewBox="0 0 960 862" role="img" aria-label="Whole run on Apple M2 Max, stock stable-diffusion.cpp against Heavy Metal">
+<title>Whole run on Apple M2 Max, stock stable-diffusion.cpp against Heavy Metal</title>
+<rect x="0.5" y="0.5" width="959" height="861" rx="16" fill="#151514" stroke="#ecebe6" stroke-opacity="0.10"/>
+<g font-family="-apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', sans-serif" text-rendering="geometricPrecision">
+<text x="32" y="43" font-size="13" font-weight="600" fill="#b1aea6">Whole run on Apple M2 Max (s) · stock against Heavy Metal</text>
+<text x="32" y="80" font-size="13" font-weight="600" fill="#8a877c">Video models</text>
+<rect x="32" y="88" width="896" height="1" fill="#ecebe6" fill-opacity="0.10"/>
+<svg x="32.0" y="117.0" width="30" height="30" viewBox="0 0 24 24"><g fill="#ecebe6" fill-rule="evenodd"><path d="M19.667 13.243c.003 0 .003 0 0 0 .542-1.219.934-2.374 1.084-3.342.192-1.237.008-2.213-.552-2.903-.67-.827-1.714-1.057-2.756-1.065-.766 0-1.663.133-2.621.358C14.147 3.695 12.762 0 10.162 0 7.157 0 4.773 5.317 3.378 9.996 2.867 11.716 2 15.134 2 16.813 2 20.775 5.133 24 8.984 24c4.36 0 12.7-2.8 12.7-7.187 0-1.355-.793-2.553-2.017-3.57zm-2.23-5.72c.543.004 1.277.076 1.61.52.302.404.273 1.097.194 1.605-.138.894-.495 1.876-.845 2.7a16.88 16.88 0 00-2.71-1.325 39.005 39.005 0 00-.51-3.19c.838-.196 1.612-.31 2.262-.31zm-1.576 5.265c.65.284 1.267.596 1.872.974a32.689 32.689 0 01-1.753 3.028c.039-1.03.01-2.435-.119-4.002zm-1.783-2.317c-1.402-.42-2.801-.693-4.018-.797A30.579 30.579 0 0113.7 8.24c.149.733.274 1.485.378 2.23zM5.897 7.292c1.402-3.572 3-5.703 4.274-5.703 1.633 0 2.747 3.473 3.175 5.108A31.777 31.777 0 008.582 8.64c-1.48.744-2.966 1.738-3.97 2.573.314-1.272.98-3.137 1.285-3.922zm3.05 15.119c-2.99-.02-5.415-2.525-5.415-5.598 0-3.09 2.446-5.601 5.454-5.601 1.547 0 3.478.365 5.296.97.2 2.05.24 3.928.138 5.121-.256 3.002-2.813 5.1-5.473 5.108zm7.244-1.722c-.586.27-1.207.516-1.845.73 1.542-1.637 3.321-4.213 4.624-6.727.766.703 1.183 1.428 1.183 2.12.002 1.301-1.444 2.714-3.962 3.877z" /></g></svg>
+<text x="76" y="129.0" font-size="15" font-weight="600" fill="#ecebe6">LTX-2.3 22B Distilled</text>
+<text x="76" y="147.0" font-size="12.5" fill="#8a877c">1280×704 · 121 frames</text>
+<rect x="312" y="103" width="476" height="26" rx="9" fill="#66645d"/>
+<text x="322" y="120" font-size="12" font-weight="600" fill="#ecebe6">Stock · 2,715.0 s</text>
+<rect x="312" y="135" width="476" height="26" rx="9" fill="#2d2d2a"/>
+<rect x="312" y="135" width="61.5" height="26" rx="9" fill="#ecebe6"/>
+<clipPath id="bar1"><rect x="312" y="135" width="61.5" height="26"/></clipPath>
+<clipPath id="track1"><rect x="373.5" y="135" width="414.5" height="26"/></clipPath>
+<text x="322" y="152" font-size="12" font-weight="600" fill="#000000" clip-path="url(#bar1)">Heavy Metal · 350.8 s</text>
+<text x="322" y="152" font-size="12" font-weight="600" fill="#bfbebc" clip-path="url(#track1)">Heavy Metal · 350.8 s</text>
+<text x="928" y="137.0" font-size="28" font-weight="650" letter-spacing="-1.1" text-anchor="end" fill="#ecebe6">7.7×</text>
+<text x="928" y="156.0" font-size="11.5" font-weight="500" text-anchor="end" fill="#8a877c">faster · −87 % time</text>
+<rect x="32" y="175" width="896" height="1" fill="#ecebe6" fill-opacity="0.10"/>
+<svg x="32.0" y="204.0" width="30" height="30" viewBox="0 0 24 24"><g fill="#ecebe6" fill-rule="evenodd"><path d="M16.278 2c1.156 0 2.093.927 2.093 2.07v12.501a.74.74 0 00.744.709.74.74 0 00.743-.709V9.099a2.06 2.06 0 012.071-2.049A2.06 2.06 0 0124 9.1v6.561a.649.649 0 01-.652.645.649.649 0 01-.653-.645V9.1a.762.762 0 00-.766-.758.762.762 0 00-.766.758v7.472a2.037 2.037 0 01-2.048 2.026 2.037 2.037 0 01-2.048-2.026v-12.5a.785.785 0 00-.788-.753.785.785 0 00-.789.752l-.001 15.904A2.037 2.037 0 0113.441 22a2.037 2.037 0 01-2.048-2.026V18.04c0-.356.292-.645.652-.645.36 0 .652.289.652.645v1.934c0 .263.142.506.372.638.23.131.514.131.744 0a.734.734 0 00.372-.638V4.07c0-1.143.937-2.07 2.093-2.07zm-5.674 0c1.156 0 2.093.927 2.093 2.07v11.523a.648.648 0 01-.652.645.648.648 0 01-.652-.645V4.07a.785.785 0 00-.789-.78.785.785 0 00-.789.78v14.013a2.06 2.06 0 01-2.07 2.048 2.06 2.06 0 01-2.071-2.048V9.1a.762.762 0 00-.766-.758.762.762 0 00-.766.758v3.8a2.06 2.06 0 01-2.071 2.049A2.06 2.06 0 010 12.9v-1.378c0-.357.292-.646.652-.646.36 0 .653.29.653.646V12.9c0 .418.343.757.766.757s.766-.339.766-.757V9.099a2.06 2.06 0 012.07-2.048 2.06 2.06 0 012.071 2.048v8.984c0 .419.343.758.767.758.423 0 .766-.339.766-.758V4.07c0-1.143.937-2.07 2.093-2.07z" /></g></svg>
+<text x="76" y="216.0" font-size="15" font-weight="600" fill="#ecebe6">MiniMax H3</text>
+<text x="76" y="234.0" font-size="12.5" fill="#8a877c">864×480 · 56 frames</text>
+<rect x="312" y="190" width="476" height="26" rx="9" fill="#66645d"/>
+<text x="322" y="207" font-size="12" font-weight="600" fill="#ecebe6">Stock · 1,247.1 s</text>
+<rect x="312" y="222" width="476" height="26" rx="9" fill="#2d2d2a"/>
+<rect x="312" y="222" width="351.3" height="26" rx="9" fill="#ecebe6"/>
+<clipPath id="bar2"><rect x="312" y="222" width="351.3" height="26"/></clipPath>
+<clipPath id="track2"><rect x="663.3" y="222" width="124.7" height="26"/></clipPath>
+<text x="322" y="239" font-size="12" font-weight="600" fill="#000000" clip-path="url(#bar2)">Heavy Metal · 920.3 s</text>
+<text x="322" y="239" font-size="12" font-weight="600" fill="#bfbebc" clip-path="url(#track2)">Heavy Metal · 920.3 s</text>
+<text x="928" y="224.0" font-size="28" font-weight="650" letter-spacing="-1.1" text-anchor="end" fill="#ecebe6">1.4×</text>
+<text x="928" y="243.0" font-size="11.5" font-weight="500" text-anchor="end" fill="#8a877c">faster · −26 % time</text>
+<text x="32" y="285" font-size="13" font-weight="600" fill="#8a877c">Image models</text>
+<rect x="32" y="293" width="896" height="1" fill="#ecebe6" fill-opacity="0.10"/>
+<svg x="32.0" y="322.0" width="30" height="30" viewBox="0 0 24 24"><g fill="#ecebe6" fill-rule="evenodd"><path d="M17.113 10.248H14.56l-2.553-3.616-7.963 11.27h2.558l5.405-7.654h2.552l-5.404 7.653h2.565l5.392-7.653L24 20 19.97 20v-2.091l-2.857-4.044-2.842 4.037V20H0L12.008 3l5.105 7.249z" /></g></svg>
+<text x="76" y="334.0" font-size="15" font-weight="600" fill="#ecebe6">FLUX.3 Klein Base</text>
+<text x="76" y="352.0" font-size="12.5" fill="#8a877c">1024×1024</text>
+<rect x="312" y="308" width="476" height="26" rx="9" fill="#66645d"/>
+<text x="322" y="325" font-size="12" font-weight="600" fill="#ecebe6">Stock · 465.0 s</text>
+<rect x="312" y="340" width="476" height="26" rx="9" fill="#2d2d2a"/>
+<rect x="312" y="340" width="175.0" height="26" rx="9" fill="#ecebe6"/>
+<clipPath id="bar3"><rect x="312" y="340" width="175.0" height="26"/></clipPath>
+<clipPath id="track3"><rect x="487.0" y="340" width="301.0" height="26"/></clipPath>
+<text x="322" y="357" font-size="12" font-weight="600" fill="#000000" clip-path="url(#bar3)">Heavy Metal · 171.0 s</text>
+<text x="322" y="357" font-size="12" font-weight="600" fill="#bfbebc" clip-path="url(#track3)">Heavy Metal · 171.0 s</text>
+<text x="928" y="342.0" font-size="28" font-weight="650" letter-spacing="-1.1" text-anchor="end" fill="#ecebe6">2.7×</text>
+<text x="928" y="361.0" font-size="11.5" font-weight="500" text-anchor="end" fill="#8a877c">faster · −63 % time</text>
+<rect x="32" y="380" width="896" height="1" fill="#ecebe6" fill-opacity="0.10"/>
+<svg x="32.0" y="409.0" width="30" height="30" viewBox="100 100 1100 1100"><g fill="#ecebe6"><path d="M709.862 624.131C674.522 662.721 639.326 700.847 604.488 739.296C573.281 773.738 539.147 804.33 496.639 824.383C472.569 835.738 447.305 841.993 420.629 842.412C401.593 842.711 382.494 843.316 363.949 838.078C317.781 825.04 280.987 798.804 254.291 758.823C235.36 730.472 222.832 699.64 221.276 665.251C218.564 605.284 235.653 552.593 280.361 510.714C308.303 484.54 340.607 466.163 378.772 460.234C429.147 452.409 476.14 462.953 519.761 489.014C529.706 494.956 539.365 501.369 548.244 508.839C556.455 515.747 556.674 520.096 549.131 527.852C543.642 533.495 538.425 539.335 533.628 545.577C525.927 555.597 520.361 556.471 510.081 548.733C494.944 537.338 478.904 527.651 460.838 521.683C396.252 500.346 320.914 520.255 287.717 598.147C256.542 671.296 299.584 759.859 374.24 781.906C403.168 790.448 431.768 788.337 460.176 778.7C491.916 767.934 517.789 748.573 541.318 725.355C587.71 679.577 631.147 631.036 675.353 583.2C700.583 555.898 724.633 527.258 754.517 504.659C798.45 471.435 847.954 452.684 903.136 457.849C975.354 464.608 1028.29 502.149 1059.83 567.929C1077.37 604.504 1082.97 643.339 1075.73 683.403C1069.27 719.12 1054.08 750.981 1029.92 778.27C1005.77 805.54 976.459 825.365 941.307 835.007C887.032 849.894 834.857 844.301 785.787 815.579C773.282 808.259 761.136 800.401 749.543 791.714C741.507 785.692 740.402 779.978 745.838 771.412C750.045 764.782 754.69 758.413 760.053 752.645C766.591 745.615 772.452 744.406 781.26 748.182C788.71 751.377 795.387 755.95 802.094 760.41C827.271 777.154 854.677 787.607 885.099 787.934C908.654 788.187 930.838 781.817 951.531 770.413C993.309 747.39 1015.08 711.501 1019.55 664.566C1023.79 620.083 1012.14 580.843 979.374 549.475C957.893 528.908 931.262 518.49 902.028 514.789C856.731 509.055 818.6 526.152 783.736 552.899C756.554 573.752 732.663 598.071 709.862 624.131Z" /></g></svg>
+<text x="76" y="421.0" font-size="15" font-weight="600" fill="#ecebe6">Iris 3B</text>
+<text x="76" y="439.0" font-size="12.5" fill="#8a877c">1024×1024</text>
+<rect x="312" y="395" width="476" height="26" rx="9" fill="#66645d"/>
+<text x="322" y="412" font-size="12" font-weight="600" fill="#ecebe6">Stock · 1,360.1 s</text>
+<rect x="312" y="427" width="476" height="26" rx="9" fill="#2d2d2a"/>
+<rect x="312" y="427" width="176.9" height="26" rx="9" fill="#ecebe6"/>
+<clipPath id="bar4"><rect x="312" y="427" width="176.9" height="26"/></clipPath>
+<clipPath id="track4"><rect x="488.9" y="427" width="299.1" height="26"/></clipPath>
+<text x="322" y="444" font-size="12" font-weight="600" fill="#000000" clip-path="url(#bar4)">Heavy Metal · 505.4 s</text>
+<text x="322" y="444" font-size="12" font-weight="600" fill="#bfbebc" clip-path="url(#track4)">Heavy Metal · 505.4 s</text>
+<text x="928" y="429.0" font-size="28" font-weight="650" letter-spacing="-1.1" text-anchor="end" fill="#ecebe6">2.7×</text>
+<text x="928" y="448.0" font-size="11.5" font-weight="500" text-anchor="end" fill="#8a877c">faster · −63 % time</text>
+<rect x="32" y="467" width="896" height="1" fill="#ecebe6" fill-opacity="0.10"/>
+<svg x="32.0" y="496.0" width="30" height="30" viewBox="22 12 156 156"><path d="M174.82 108.75L155.38 75L165.64 57.75C166.46 56.31 166.46 54.53 165.64 53.09L155.38 35.84C154.86 34.91 153.87 34.33 152.78 34.33H114.88L106.14 19.03C105.62 18.1 104.63 17.52 103.54 17.52H83.3C82.21 17.52 81.22 18.1 80.7 19.03L61.26 52.77H41.02C39.93 52.77 38.94 53.35 38.42 54.28L28.16 71.53C27.34 72.97 27.34 74.75 28.16 76.19L45.52 107.5L36.78 122.8C35.96 124.24 35.96 126.02 36.78 127.46L47.04 144.71C47.56 145.64 48.55 146.22 49.64 146.22H87.54L96.28 161.52C96.8 162.45 97.79 163.03 98.88 163.03H119.12C120.21 163.03 121.2 162.45 121.72 161.52L141.16 127.78H158.52C159.61 127.78 160.6 127.2 161.12 126.27L171.38 109.02C172.2 107.58 172.2 105.8 171.38 104.36L174.82 108.75Z" fill="url(#qwen-verlauf0)"/><path d="M119.12 163.03H98.88L87.54 144.71H49.64L61.26 126.39H80.7L38.42 55.29H61.26L83.3 19.03L93.56 37.35L83.3 55.29H161.58L151.32 72.54L170.76 106.28H151.32L141.16 88.34L101.18 163.03H119.12Z" fill="white"/><path d="M127.86 79.83H76.14L101.18 122.11L127.86 79.83Z" fill="url(#qwen-verlauf1)"/><defs><radialGradient id="qwen-verlauf0" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(100 100) rotate(90) scale(100)"><stop stop-color="#665CEE"/><stop offset="1" stop-color="#332E91"/></radialGradient><radialGradient id="qwen-verlauf1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(100 100) rotate(90) scale(100)"><stop stop-color="#665CEE"/><stop offset="1" stop-color="#332E91"/></radialGradient></defs></svg>
+<text x="76" y="508.0" font-size="15" font-weight="600" fill="#ecebe6">Qwen-Image 2.1</text>
+<text x="76" y="526.0" font-size="12.5" fill="#8a877c">1024×1024</text>
+<rect x="312" y="482" width="476" height="26" rx="9" fill="#66645d"/>
+<text x="322" y="499" font-size="12" font-weight="600" fill="#ecebe6">Stock · 1,035.4 s</text>
+<rect x="312" y="514" width="476" height="26" rx="9" fill="#2d2d2a"/>
+<rect x="312" y="514" width="220.5" height="26" rx="9" fill="#ecebe6"/>
+<clipPath id="bar5"><rect x="312" y="514" width="220.5" height="26"/></clipPath>
+<clipPath id="track5"><rect x="532.5" y="514" width="255.5" height="26"/></clipPath>
+<text x="322" y="531" font-size="12" font-weight="600" fill="#000000" clip-path="url(#bar5)">Heavy Metal · 479.7 s</text>
+<text x="322" y="531" font-size="12" font-weight="600" fill="#bfbebc" clip-path="url(#track5)">Heavy Metal · 479.7 s</text>
+<text x="928" y="516.0" font-size="28" font-weight="650" letter-spacing="-1.1" text-anchor="end" fill="#ecebe6">2.2×</text>
+<text x="928" y="535.0" font-size="11.5" font-weight="500" text-anchor="end" fill="#8a877c">faster · −54 % time</text>
+<rect x="32" y="554" width="896" height="1" fill="#ecebe6" fill-opacity="0.10"/>
+<svg x="32.0" y="583.0" width="30" height="30" viewBox="0 0 24 24"><text x="12" y="17.5" text-anchor="middle" font-size="16" font-weight="700" fill="#ecebe6">M</text></svg>
+<text x="76" y="595.0" font-size="15" font-weight="600" fill="#ecebe6">Ming-Image 0.1 Design</text>
+<text x="76" y="613.0" font-size="12.5" fill="#8a877c">1024×1024</text>
+<rect x="312" y="569" width="476" height="26" rx="9" fill="#66645d"/>
+<text x="322" y="586" font-size="12" font-weight="600" fill="#ecebe6">Stock · 341.7 s</text>
+<rect x="312" y="601" width="476" height="26" rx="9" fill="#2d2d2a"/>
+<rect x="312" y="601" width="231.7" height="26" rx="9" fill="#ecebe6"/>
+<clipPath id="bar6"><rect x="312" y="601" width="231.7" height="26"/></clipPath>
+<clipPath id="track6"><rect x="543.7" y="601" width="244.3" height="26"/></clipPath>
+<text x="322" y="618" font-size="12" font-weight="600" fill="#000000" clip-path="url(#bar6)">Heavy Metal · 166.3 s</text>
+<text x="322" y="618" font-size="12" font-weight="600" fill="#bfbebc" clip-path="url(#track6)">Heavy Metal · 166.3 s</text>
+<text x="928" y="603.0" font-size="28" font-weight="650" letter-spacing="-1.1" text-anchor="end" fill="#ecebe6">2.1×</text>
+<text x="928" y="622.0" font-size="11.5" font-weight="500" text-anchor="end" fill="#8a877c">faster · −51 % time</text>
+<rect x="32" y="641" width="896" height="1" fill="#ecebe6" fill-opacity="0.10"/>
+<svg x="32.0" y="670.0" width="30" height="30" viewBox="0 0 1024 1024"><defs><linearGradient id="openmoss-team-mg" x1="0" y1="277" x2="0" y2="747" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3b7fe0" /><stop offset="0.55" stop-color="#4aa5f2" /><stop offset="1" stop-color="#7fe6fb" /></linearGradient><linearGradient x1="0" y1="277" x2="0" y2="747" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#a9e3fc" /><stop offset="1" stop-color="#c8f6fd" /></linearGradient><clipPath><rect x="0" y="0" /></clipPath></defs><path d="M235.51,747 A5.64,5.64 0 0 1 230.53,738.71 L472.64,284.47 A14.1,14.1 0 0 1 485.08,277 L530.67,277 A35.25,35.25 0 0 1 565.92,312.25 L565.92,684.02 A28.2,28.2 0 0 1 537.72,712.22 L504.82,712.22 A28.2,28.2 0 0 1 476.62,684.02 L476.62,444.54 L322.04,734.55 A23.5,23.5 0 0 1 301.3,747 Z" fill="url(#openmoss-team-mg)" /><rect width="47.6" height="47.6" x="698.98" y="279.87" rx="8.36" fill="#3b7fe0" /><rect width="47.6" height="47.6" x="751.2" y="279.87" rx="8.36" fill="#3b7fe0" /><rect width="47.6" height="47.6" x="646.76" y="332.09" rx="8.36" fill="#ade5fc" /><rect width="47.6" height="47.6" x="698.98" y="332.09" rx="8.36" fill="#3e88e4" /><rect width="47.6" height="47.6" x="751.2" y="332.09" rx="8.36" fill="#3e88e4" /><rect width="47.6" height="47.6" x="646.76" y="384.32" rx="8.36" fill="#b1e8fc" /><rect width="47.6" height="47.6" x="698.98" y="384.32" rx="8.36" fill="#4290e8" /><rect width="47.6" height="47.6" x="751.2" y="384.32" rx="8.36" fill="#4290e8" /><rect width="47.6" height="47.6" x="594.54" y="436.54" rx="8.36" fill="#b5eafc" /><rect width="47.6" height="47.6" x="646.76" y="436.54" rx="8.36" fill="#b5eafc" /><rect width="47.6" height="47.6" x="698.98" y="436.54" rx="8.36" fill="#4599ec" /><rect width="47.6" height="47.6" x="751.2" y="436.54" rx="8.36" fill="#4599ec" /><rect width="47.6" height="47.6" x="594.54" y="488.76" rx="8.36" fill="#b8ecfc" /><rect width="47.6" height="47.6" x="646.76" y="488.76" rx="8.36" fill="#b8ecfc" /><rect width="47.6" height="47.6" x="698.98" y="488.76" rx="8.36" fill="#49a2f0" /><rect width="47.6" height="47.6" x="751.2" y="488.76" rx="8.36" fill="#49a2f0" /><rect width="47.6" height="47.6" x="594.54" y="540.98" rx="8.36" fill="#bceffd" /><rect width="47.6" height="47.6" x="698.98" y="540.98" rx="8.36" fill="#53b0f4" /><rect width="47.6" height="47.6" x="751.2" y="540.98" rx="8.36" fill="#53b0f4" /><rect width="47.6" height="47.6" x="594.54" y="593.21" rx="8.36" fill="#c0f1fd" /><rect width="47.6" height="47.6" x="698.98" y="593.21" rx="8.36" fill="#62c2f6" /><rect width="47.6" height="47.6" x="751.2" y="593.21" rx="8.36" fill="#62c2f6" /><rect width="47.6" height="47.6" x="698.98" y="645.43" rx="8.36" fill="#70d4f8" /><rect width="47.6" height="47.6" x="751.2" y="645.43" rx="8.36" fill="#70d4f8" /><rect width="47.6" height="47.6" x="698.98" y="697.65" rx="8.36" fill="#7fe6fb" /><rect width="47.6" height="47.6" x="751.2" y="697.65" rx="8.36" fill="#7fe6fb" /></svg>
+<text x="76" y="682.0" font-size="15" font-weight="600" fill="#ecebe6">MOSS-Image Base</text>
+<text x="76" y="700.0" font-size="12.5" fill="#8a877c">1024×1024</text>
+<rect x="312" y="656" width="476" height="26" rx="9" fill="#66645d"/>
+<text x="322" y="673" font-size="12" font-weight="600" fill="#ecebe6">Stock · 741.9 s</text>
+<rect x="312" y="688" width="476" height="26" rx="9" fill="#2d2d2a"/>
+<rect x="312" y="688" width="316.2" height="26" rx="9" fill="#ecebe6"/>
+<clipPath id="bar7"><rect x="312" y="688" width="316.2" height="26"/></clipPath>
+<clipPath id="track7"><rect x="628.2" y="688" width="159.8" height="26"/></clipPath>
+<text x="322" y="705" font-size="12" font-weight="600" fill="#000000" clip-path="url(#bar7)">Heavy Metal · 492.8 s</text>
+<text x="322" y="705" font-size="12" font-weight="600" fill="#bfbebc" clip-path="url(#track7)">Heavy Metal · 492.8 s</text>
+<text x="928" y="690.0" font-size="28" font-weight="650" letter-spacing="-1.1" text-anchor="end" fill="#ecebe6">1.5×</text>
+<text x="928" y="709.0" font-size="11.5" font-weight="500" text-anchor="end" fill="#8a877c">faster · −34 % time</text>
+<rect x="32" y="728" width="896" height="1" fill="#ecebe6" fill-opacity="0.10"/>
+<svg x="32.0" y="757.0" width="30" height="30" viewBox="0 0 24 24"><g fill="#ecebe6" fill-rule="evenodd"><path d="M7.421.017c1.956-.137 3.68 1.224 3.932 3.103.24 1.784-.982 3.51-2.818 3.915-.46.102-.97.073-1.458.135a5.126 5.126 0 00-3.042 1.483l-.01.005-.01-.001-.007-.006-.003-.01a.03.03 0 01.005-.017.044.044 0 00.008-.025 485.376 485.376 0 01-.011-5.028C4.01 1.711 5.478.155 7.42.017z" /><path d="M7.627 15.562c-2.488-.02-4.271-2.47-3.405-4.761a3.665 3.665 0 013.052-2.336c.425-.045.936-.034 1.345-.109 2.104-.39 3.73-2 4.058-4.049.073-.454.034-.996.142-1.478.497-2.232 3.055-3.484 5.203-2.476 1.119.527 1.87 1.522 2.056 2.71.037.243.05.545.037.905-.243 6.468-5.768 11.647-12.488 11.592m3.135 1.03a.044.044 0 01-.024-.022v-.007l.002-.006c0-.003 0-.004.003-.005l.006-.003c2.553-.585 4.764-1.76 6.635-3.526.033-.031.064-.029.092.007.299.396.613.82.863 1.225a11.736 11.736 0 011.755 5.414c.027.391.036.693.026.907-.093 1.888-1.672 3.41-3.665 3.421-1.763.011-3.313-1.192-3.647-2.875-.08-.399-.056-.95-.122-1.371-.208-1.295-.841-2.344-1.899-3.144l-.025-.015zm-3.73 7.352c-1.498-.26-2.703-1.424-2.972-2.871a5.537 5.537 0 01-.055-.905V15.38c0-.016.005-.018.017-.008.979.87 2.009 1.402 3.353 1.49l.36.011c1.751.057 3.234 1.204 3.576 2.87.506 2.464-1.724 4.645-4.28 4.2z" /></g></svg>
+<text x="76" y="769.0" font-size="15" font-weight="600" fill="#ecebe6">Krea 2 Raw</text>
+<text x="76" y="787.0" font-size="12.5" fill="#8a877c">1024×1024</text>
+<rect x="312" y="743" width="476" height="26" rx="9" fill="#66645d"/>
+<text x="322" y="760" font-size="12" font-weight="600" fill="#ecebe6">Stock · 1,864.9 s</text>
+<rect x="312" y="775" width="476" height="26" rx="9" fill="#2d2d2a"/>
+<rect x="312" y="775" width="321.2" height="26" rx="9" fill="#ecebe6"/>
+<clipPath id="bar8"><rect x="312" y="775" width="321.2" height="26"/></clipPath>
+<clipPath id="track8"><rect x="633.2" y="775" width="154.8" height="26"/></clipPath>
+<text x="322" y="792" font-size="12" font-weight="600" fill="#000000" clip-path="url(#bar8)">Heavy Metal · 1,258.6 s</text>
+<text x="322" y="792" font-size="12" font-weight="600" fill="#bfbebc" clip-path="url(#track8)">Heavy Metal · 1,258.6 s</text>
+<text x="928" y="777.0" font-size="28" font-weight="650" letter-spacing="-1.1" text-anchor="end" fill="#ecebe6">1.5×</text>
+<text x="928" y="796.0" font-size="11.5" font-weight="500" text-anchor="end" fill="#8a877c">faster · −33 % time</text>
+<rect x="32" y="815" width="896" height="1" fill="#ecebe6" fill-opacity="0.10"/>
+<text x="32" y="838" font-size="12" fill="#8a877c">Not shown: SDXL and SD 1.5, where the stock build writes a white image.</text>
+<text x="928" y="838" font-size="12" font-weight="600" text-anchor="end" fill="#b1aea6">exe-hq.net/research</text>
+</g></svg>
