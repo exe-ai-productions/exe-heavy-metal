@@ -76,6 +76,16 @@ Recipes declaring `video_frames` also switch the form to Video Generation;
 other recipes switch to Image Generation. Generation is enabled after the
 selected recipe is loaded. Changing a selection does not reload the model
 until you click Load.
+
+The generation status bar shows the current stage and elapsed time even when
+Preview Mode is `none`. During sampling it shows completed steps for the current
+pass; prompt encoding and VAE decoding show an activity indicator when their
+total work is unknown. Sampling reaching 100% does not mean the job is finished:
+decoding, ADetailer, and output encoding may still follow.
+The canvas keeps the submitted output aspect ratio, and stage changes keep the
+same layout. Editing the next request's resolution does not resize the current
+preview or result.
+
 The server can also start with the existing model arguments shown below;
 existing API clients then work without selecting a recipe. The UI automatically
 selects **Command-line model (all features)** and uses the startup generation
@@ -89,8 +99,8 @@ FLUX 1/2/3, Chroma, Qwen Image and editing variants; Z-Image, Anima, ERNIE,
 LENS, PiD and other supported image families; AnimateDiff, Wan, LTX,
 HunyuanVideo, LingBot Video and MiniMax-H3. Model-specific text encoder
 labels identify the expected encoder family and size. Loading a video model enables **Video Generation**; I2V also requires a
-start image. The Models panel can be collapsed and remembers its open state.
-Its header shows elapsed loading time from the status API and keeps the final
+start image. The model button below the prompt opens model and recipe selection.
+Its status summary shows elapsed loading time from the status API and keeps the final
 time after success or failure, including after a page refresh.
 Built-ins are embedded in the
 binary from [recipes/](recipes/), with one JSON file per recipe. Adding or

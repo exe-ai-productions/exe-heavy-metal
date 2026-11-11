@@ -5,6 +5,7 @@
 #include "ggml-metal-tuning.h"
 
 #include "ggml-impl.h"
+#include "ggml-ext.h"
 
 #include <cassert>
 #include <memory>
@@ -2320,6 +2321,27 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_heavy_metal_exe_
     }
 
     return res;
+}
+
+bool ggml_metal_op_is_ext_rope(const struct ggml_tensor * op) {
+    ggml_ext_op_t ext = ggml_ext_op_get(op);
+    if (!ext || strcmp(ggml_ext_op_name(ext), "sd.rope_apply.v1") != 0) {
+        return false;
+    }
+    const ggml_tensor * x  = op->src[0];
+    const ggml_tensor * pe = op->src[1];
+    // the same shape rules as the operator's own infer callback
+    return x && pe && !op->src[2] &&
+        x->type == GGML_TYPE_F32 && pe->type == GGML_TYPE_F32 && op->type == GGML_TYPE_F32 &&
+        x->ne[0] % 2 == 0 && pe->ne[0] == 2 && pe->ne[1] == 2 && pe->ne[2] > 0 && pe->ne[2] <= x->ne[0]/2 &&
+        pe->ne[3] == x->ne[2] &&
+        op->ne[0] == x->ne[0] && op->ne[1] == x->ne[2] && op->ne[2] == x->ne[1]*x->ne[3] && op->ne[3] == 1;
+}
+
+bool ggml_metal_op_ext_rope_interleaved(const struct ggml_tensor * op) {
+    int32_t interleaved = 0;
+    memcpy(&interleaved, ggml_ext_op_attributes(op), sizeof(interleaved));
+    return interleaved != 0;
 }
 
 // ROPE_APPLY (kernels/heavy_metal_exe_rope_apply.metal); packed: rows of x and the table without gaps, 16-byte aligned

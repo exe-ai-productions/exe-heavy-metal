@@ -448,7 +448,6 @@ static std::vector<int> ggml_metal_graph_optimize_reorder(const std::vector<node
             case GGML_OP_MUL_MAT:
             case GGML_OP_MUL_MAT_ID:
             case GGML_OP_ROPE:
-            case GGML_OP_ROPE_APPLY:
             case GGML_OP_ADD_MUL_ID:
             case GGML_OP_NORM:
             case GGML_OP_RMS_NORM:

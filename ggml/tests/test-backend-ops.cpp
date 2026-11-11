@@ -19,6 +19,7 @@
 #include "ggml-alloc.h"
 #include "ggml-backend.h"
 #include "ggml-cpp.h"
+#include "ggml-ext.h"
 
 #include <algorithm>
 #include <atomic>
@@ -4408,6 +4409,7 @@ struct test_scale_cpy : public test_case {
     const bool cont;
     const bool permuted;
     const bool offset;
+    const bool reshape;
 
     std::string op_desc(ggml_tensor * t) override {
         GGML_UNUSED(t);
@@ -4417,13 +4419,24 @@ struct test_scale_cpy : public test_case {
     bool run_whole_graph() override { return true; }
 
     std::string vars() override {
-        return VARS_TO_STR4(ne, cont, permuted, offset);
+        return VARS_TO_STR5(ne, cont, permuted, offset, reshape);
     }
 
-    test_scale_cpy(std::array<int64_t, 4> ne = {128, 33, 5, 2}, bool cont = false, bool permuted = false, bool offset = false)
-        : ne(ne), cont(cont), permuted(permuted), offset(offset) {}
+    // reshape: a CONT that also reshapes its contiguous source (ggml_cont_4d) feeds the SCALE
+    test_scale_cpy(std::array<int64_t, 4> ne = {128, 33, 5, 2}, bool cont = false, bool permuted = false, bool offset = false,
+                   bool reshape = false)
+        : ne(ne), cont(cont), permuted(permuted), offset(offset), reshape(reshape) {}
 
     ggml_tensor * build_graph(ggml_context * ctx) override {
+        if (reshape) {
+            ggml_tensor * x = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, ne[0], ne[2], ne[1], ne[3]);
+            ggml_set_name(x, "x");
+            ggml_tensor * v = ggml_cont_4d(ctx, x, ne[0], ne[1], ne[2], ne[3]);
+            ggml_tensor * out = ggml_cast(ctx, ggml_scale(ctx, v, 1.0f/128.0f), GGML_TYPE_F16);
+            ggml_set_name(out, "out");
+            return out;
+        }
+
         ggml_tensor * x = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, ne[0] + (offset ? 4 : 0), ne[2], ne[1], ne[3]);
         ggml_set_name(x, "x");
 
@@ -4529,6 +4542,165 @@ struct test_add_mul_id : public test_case {
                 init_tensor_uniform(t);
             }
         }
+    }
+};
+
+// (CONT +) SCALE + PERMUTE + CPY to F16, as attention emits for its values when it scales them before the permute:
+// x [d, heads, tokens, batch]; cont: x is a strided view (every second head), so the SCALE reads a CONT of it
+struct test_scale_perm_cpy : public test_case {
+    const std::array<int64_t, 4> ne;
+    const bool cont;
+    const bool reshape;
+
+    std::string op_desc(ggml_tensor * t) override {
+        GGML_UNUSED(t);
+        return "SCALE_PERM_CPY";
+    }
+
+    bool run_whole_graph() override { return true; }
+
+    double max_nmse_err() override {
+        return 0.0;
+    }
+
+    std::string vars() override {
+        return VARS_TO_STR3(ne, cont, reshape);
+    }
+
+    // reshape: the CONT also reshapes its source (ggml_cont_4d), so the source has another shape than the CONT
+    test_scale_perm_cpy(std::array<int64_t, 4> ne = {128, 6, 33, 2}, bool cont = false, bool reshape = false)
+        : ne(ne), cont(cont), reshape(reshape) {}
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        ggml_tensor * v;
+        if (reshape) {
+            ggml_tensor * x = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, ne[0], ne[2], ne[1], ne[3]);
+            ggml_set_name(x, "x");
+            v = ggml_cont_4d(ctx, x, ne[0], ne[1], ne[2], ne[3]);
+        } else if (cont) {
+            ggml_tensor * x = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, ne[0], 2*ne[1], ne[2], ne[3]);
+            ggml_set_name(x, "x");
+            v = ggml_view_4d(ctx, x, ne[0], ne[1], ne[2], ne[3], 2*x->nb[1], x->nb[2], x->nb[3], 0);
+            v = ggml_cont(ctx, v);
+        } else {
+            v = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne.data());
+            ggml_set_name(v, "x");
+        }
+        v = ggml_scale(ctx, v, 1.0f/128.0f);
+        v = ggml_permute(ctx, v, 0, 2, 1, 3);
+
+        ggml_tensor * out = ggml_cast(ctx, v, GGML_TYPE_F16);
+        ggml_set_name(out, "out");
+
+        return out;
+    }
+};
+
+// REPEAT + MUL as gated attention emits it: a per-head gate [1, heads, tokens, batch] repeated over the head values
+// and multiplied in; swap: the REPEAT is the MUL's first operand. A backend may broadcast the gate instead of
+// writing the repeat (Metal: GGML_METAL_FUSION_REPEAT_MUL); the products are the same
+struct test_repeat_mul : public test_case {
+    const std::array<int64_t, 4> ne;
+    const bool swap;
+
+    std::string op_desc(ggml_tensor * t) override {
+        GGML_UNUSED(t);
+        return "REPEAT_MUL";
+    }
+
+    bool run_whole_graph() override { return true; }
+
+    double max_nmse_err() override {
+        return 0.0;
+    }
+
+    std::string vars() override {
+        return VARS_TO_STR2(ne, swap);
+    }
+
+    test_repeat_mul(std::array<int64_t, 4> ne = {128, 8, 33, 1}, bool swap = false) : ne(ne), swap(swap) {}
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        ggml_tensor * x = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne.data());
+        ggml_set_name(x, "x");
+        ggml_tensor * g = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, 1, ne[1], ne[2], ne[3]);
+        ggml_set_name(g, "gate");
+
+        ggml_tensor * r   = ggml_repeat(ctx, g, x);
+        ggml_tensor * out = swap ? ggml_mul(ctx, r, x) : ggml_mul(ctx, x, r);
+        ggml_set_name(out, "out");
+
+        return out;
+    }
+};
+
+// MUL + ADD (+ ADD) as ggml graphs emit modulation and gated residuals: (a + b*s) + t with s and t broadcast over
+// the rows. same: b is a, as in x + x*scale; swap: the ADD reads the product as its first operand; bcast 1: one row of
+// s and t per a->ne[2]; bcast 2: one row per token read through a permuted view, as per-token modulation emits it.
+// A backend may fuse the chain (Metal: GGML_METAL_FUSION_MUL_ADD); the result must have the bits of the three ops.
+struct test_mul_add_fuse : public test_case {
+    const int64_t ne0;
+    const int64_t ne1;
+    const int64_t ne2;
+    const bool shift;
+    const bool same;
+    const bool swap;
+    const int bcast;
+
+    std::string op_desc(ggml_tensor * t) override {
+        GGML_UNUSED(t);
+        return "MUL_ADD";
+    }
+
+    bool run_whole_graph() override { return true; }
+
+    double max_nmse_err() override {
+        return 0.0;
+    }
+
+    std::string vars() override {
+        return VARS_TO_STR7(ne0, ne1, ne2, shift, same, swap, bcast);
+    }
+
+    test_mul_add_fuse(int64_t ne0 = 128, int64_t ne1 = 33, int64_t ne2 = 2, bool shift = true, bool same = true,
+                      bool swap = false, int bcast = 1)
+        : ne0(ne0), ne1(ne1), ne2(ne2), shift(shift), same(same), swap(swap), bcast(bcast) {}
+
+    ggml_tensor * build_graph(ggml_context * ctx) override {
+        ggml_tensor * a = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, ne0, ne1, ne2);
+        ggml_set_name(a, "a");
+        ggml_tensor * b = a;
+        if (!same) {
+            b = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, ne0, ne1, ne2);
+            ggml_set_name(b, "b");
+        }
+
+        ggml_tensor * s;
+        ggml_tensor * t = nullptr;
+        if (bcast == 1) {
+            ggml_tensor * proj = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, ne0, 6, ne2);
+            ggml_set_name(proj, "proj");
+            s = ggml_view_3d(ctx, proj, ne0, 1, ne2, proj->nb[1], proj->nb[2], 1*proj->nb[1]);
+            if (shift) {
+                t = ggml_view_3d(ctx, proj, ne0, 1, ne2, proj->nb[1], proj->nb[2], 3*proj->nb[1]);
+            }
+        } else {
+            ggml_tensor * proj = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, ne0, 6, ne1);
+            ggml_set_name(proj, "proj");
+            s = ggml_permute(ctx, ggml_view_3d(ctx, proj, ne0, 1, ne1, proj->nb[1], proj->nb[2], 1*proj->nb[1]), 0, 2, 1, 3);
+            if (shift) {
+                t = ggml_permute(ctx, ggml_view_3d(ctx, proj, ne0, 1, ne1, proj->nb[1], proj->nb[2], 3*proj->nb[1]), 0, 2, 1, 3);
+            }
+        }
+
+        ggml_tensor * m   = ggml_mul(ctx, b, s);
+        ggml_tensor * out = swap ? ggml_add(ctx, m, a) : ggml_add(ctx, a, m);
+        if (t) {
+            out = ggml_add(ctx, out, t);
+        }
+        ggml_set_name(out, "out");
+
+        return out;
     }
 };
 
@@ -8291,13 +8463,115 @@ struct test_group_norm : public test_case {
     }
 };
 
-// GGML_OP_ROPE_APPLY
+// The rotary operator of stable-diffusion.cpp, "sd.rope_apply.v1": registered here with the same shape rules and
+// a CPU reference kernel, so a backend that runs it natively is compared against the CPU.
+static bool test_rope_ext_infer(ggml_tensor * const * inputs, int count, const void *, ggml_ext_tensor_desc * out) {
+    if (count != 2) {
+        return false;
+    }
+    const ggml_tensor * x  = inputs[0];
+    const ggml_tensor * pe = inputs[1];
+    if (x->type != GGML_TYPE_F32 || pe->type != GGML_TYPE_F32 || x->ne[0] % 2 != 0 ||
+        pe->ne[0] != 2 || pe->ne[1] != 2 || pe->ne[2] <= 0 || pe->ne[2] > x->ne[0] / 2 || pe->ne[3] != x->ne[2]) {
+        return false;
+    }
+    out->type  = GGML_TYPE_F32;
+    out->ne[0] = x->ne[0];
+    out->ne[1] = x->ne[2];
+    out->ne[2] = x->ne[1] * x->ne[3];
+    out->ne[3] = 1;
+    return true;
+}
+
+static void test_rope_ext_compute(ggml_tensor * dst, int ith, int nth, void * user_data) {
+    const ggml_tensor * rope = (const ggml_tensor *) user_data;
+    const ggml_tensor * x    = rope->src[0];
+    const ggml_tensor * pe   = rope->src[1];
+    int32_t interleaved;
+    memcpy(&interleaved, ggml_ext_op_attributes(rope), sizeof(interleaved));
+    const int64_t half_dim = pe->ne[2];
+    const int64_t rows     = x->ne[1] * x->ne[2] * x->ne[3];
+    for (int64_t row = ith; row < rows; row += nth) {
+        const int64_t token = row % x->ne[2];
+        const int64_t head  = (row / x->ne[2]) % x->ne[1];
+        const int64_t batch = row / (x->ne[2] * x->ne[1]);
+        const char * input  = (const char *) x->data + head * x->nb[1] + token * x->nb[2] + batch * x->nb[3];
+        const char * pos    = (const char *) pe->data + token * pe->nb[3];
+        float * output      = (float *) dst->data + row * x->ne[0];
+        for (int64_t j = 0; j < half_dim; ++j) {
+            const int64_t i0 = interleaved ? 2 * j : j;
+            const int64_t i1 = interleaved ? 2 * j + 1 : j + half_dim;
+            const float a    = *(const float *) (input + i0 * x->nb[0]);
+            const float b    = *(const float *) (input + i1 * x->nb[0]);
+            const char * m   = pos + j * pe->nb[2];
+            const float c    = *(const float *) m;
+            const float s    = *(const float *) (m + pe->nb[1]);
+            if (interleaved) {
+                const float neg_s = *(const float *) (m + pe->nb[0]);
+                const float c1    = *(const float *) (m + pe->nb[0] + pe->nb[1]);
+                output[i0]        = a * c + b * neg_s;
+                output[i1]        = a * s + b * c1;
+            } else {
+                output[i0] = a * c - b * s;
+                output[i1] = a * s + b * c;
+            }
+        }
+        for (int64_t col = 2 * half_dim; col < x->ne[0]; ++col) {
+            output[col] = *(const float *) (input + col * x->nb[0]);
+        }
+    }
+}
+
+static bool test_rope_ext_supports(ggml_backend_dev_t, const ggml_tensor * node, void *) {
+    if (node->type != GGML_TYPE_F32 || !ggml_is_contiguous(node) || !node->src[0] || !node->src[1]) {
+        return false;
+    }
+    ggml_tensor * inputs[] = { node->src[0], node->src[1] };
+    ggml_ext_tensor_desc out;
+    return test_rope_ext_infer(inputs, 2, nullptr, &out) && memcmp(out.ne, node->ne, sizeof(out.ne)) == 0;
+}
+
+static ggml_status test_rope_ext_execute(const ggml_ext_execution_context * context, ggml_tensor * const * nodes,
+                                         int count, void *, void *) {
+    ggml_backend_reg_t reg = ggml_backend_dev_backend_reg(ggml_backend_get_device(context->backend));
+    auto run = (ggml_ext_cpu_parallel_fn) ggml_backend_reg_get_proc_address(reg, "ggml_ext_cpu_parallel_v1");
+    GGML_ASSERT(run);
+    return run(context->backend, nodes[count - 1], test_rope_ext_compute, nodes[count - 1]);
+}
+
+static ggml_ext_op_t test_rope_ext_op() {
+    static const ggml_ext_op_t op = [] {
+        const ggml_ext_op_desc desc = { GGML_EXT_ABI_VERSION, "sd.rope_apply.v1", sizeof(int32_t), test_rope_ext_infer };
+        ggml_ext_op_t result = ggml_ext_register_op(&desc);
+        GGML_ASSERT(result);
+        ggml_backend_dev_t cpu = ggml_backend_dev_by_type(GGML_BACKEND_DEVICE_TYPE_CPU);
+        GGML_ASSERT(cpu);
+        ggml_ext_kernel_desc kernel = {};
+        kernel.abi_version = GGML_EXT_ABI_VERSION;
+        kernel.name        = "test.rope_apply.cpu";
+        kernel.op          = GGML_OP_CUSTOM;
+        kernel.custom_op   = result;
+        kernel.priority    = 100;
+        kernel.supports    = test_rope_ext_supports;
+        kernel.execute     = test_rope_ext_execute;
+        GGML_ASSERT(ggml_ext_register_kernel(cpu, &kernel));
+        return result;
+    }();
+    return op;
+}
+
+// "sd.rope_apply.v1"
 struct test_rope_apply : public test_case {
     const std::array<int64_t, 4> ne; // [d, heads, tokens, batch]
     const bool interleaved;
     const bool permuted;             // x as a permuted view of a [d, tokens, heads, batch] tensor
     const bool pe_strided;           // the table as a permuted view of a [2, 2, tokens, n_rot/2] tensor
     const int64_t n_rot;             // rotated values per head, the rest are copied; 0 for the whole head
+
+    std::string op_desc(ggml_tensor * t) override {
+        GGML_UNUSED(t);
+        return "ROPE_APPLY";
+    }
 
     std::string vars() override {
         return VARS_TO_STR5(ne, interleaved, permuted, pe_strided, n_rot);
@@ -8330,7 +8604,10 @@ struct test_rope_apply : public test_case {
             ggml_set_name(pe, "pe");
         }
 
-        ggml_tensor * out = ggml_rope_apply(ctx, x, pe, interleaved);
+        ggml_tensor * inputs[] = { x, pe };
+        const int32_t attribute = interleaved ? 1 : 0;
+        ggml_tensor * out = ggml_ext_op_create(ctx, test_rope_ext_op(), inputs, 2, &attribute);
+        GGML_ASSERT(out);
         ggml_set_name(out, "out");
 
         return out;
@@ -10066,6 +10343,7 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         test_cases.emplace_back(new test_scale_cpy(ne, true,  false));
         test_cases.emplace_back(new test_scale_cpy(ne, true,  true));
         test_cases.emplace_back(new test_scale_cpy(ne, true,  true, true));
+        test_cases.emplace_back(new test_scale_cpy(ne, true,  false, false, true));
     }
 
     // MUL_MAT + bias ADD in the mat-mat kernel, full and ragged tiles, with and without the SCALEs around the product
@@ -10093,6 +10371,30 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
             test_cases.emplace_back(new test_add_mul_id(ne0, 17, 3, 1, shift, false, true,  1));
             test_cases.emplace_back(new test_add_mul_id(ne0, 33, 1, 1, shift, true,  false, 2));
             test_cases.emplace_back(new test_add_mul_id(ne0, 33, 1, 1, shift, false, false, 2));
+        }
+    }
+
+    // REPEAT + MUL of per-head gates, both operand orders
+    for (std::array<int64_t, 4> ne : std::vector<std::array<int64_t, 4>>{ {128, 8, 33, 2}, {6, 7, 3, 1} }) {
+        test_cases.emplace_back(new test_repeat_mul(ne, false));
+        test_cases.emplace_back(new test_repeat_mul(ne, true));
+    }
+
+    // (CONT +) SCALE + PERMUTE + CPY to F16, float4 and scalar rows
+    for (std::array<int64_t, 4> ne : std::vector<std::array<int64_t, 4>>{ {128, 6, 33, 2}, {6, 7, 3, 1} }) {
+        test_cases.emplace_back(new test_scale_perm_cpy(ne, false));
+        test_cases.emplace_back(new test_scale_perm_cpy(ne, true));
+        test_cases.emplace_back(new test_scale_perm_cpy(ne, true, true));
+    }
+
+    // MUL + ADD (+ ADD) chains of modulation and gated residuals, float4 and scalar rows, both broadcasts
+    for (int64_t ne0 : { 128, 70 }) {
+        for (bool shift : { true, false }) {
+            for (int bcast : { 1, 2 }) {
+                test_cases.emplace_back(new test_mul_add_fuse(ne0, 33, bcast == 2 ? 1 : 2, shift, true,  false, bcast));
+                test_cases.emplace_back(new test_mul_add_fuse(ne0, 17, bcast == 2 ? 1 : 3, shift, false, false, bcast));
+                test_cases.emplace_back(new test_mul_add_fuse(ne0, 17, bcast == 2 ? 1 : 3, shift, false, true,  bcast));
+            }
         }
     }
 
@@ -10140,11 +10442,22 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
     test_cases.emplace_back(new test_dsv4_hc_post(2560, 21, true, true));
     test_cases.emplace_back(new test_dsv4_hc_post(31, 17, false, true));
 
+    for (int v : { 0, 1 }) {
+        for (bool swapped : { false, true }) {
+            test_cases.emplace_back(new test_glu(GGML_GLU_OP_SITU, GGML_TYPE_F32, { 2, 5, 3, 2 }, v, swapped));
+            test_cases.emplace_back(new test_glu(GGML_GLU_OP_SITU, GGML_TYPE_F32, { 10, 7, 11, 13 }, v, swapped));
+            test_cases.emplace_back(new test_glu(GGML_GLU_OP_SITU, GGML_TYPE_F32, { 16384, 17, 1, 1 }, v, swapped));
+        }
+        test_cases.emplace_back(new test_glu_split(GGML_GLU_OP_SITU, GGML_TYPE_F32, { 1, 5, 3, 2 }, v));
+        test_cases.emplace_back(new test_glu_split(GGML_GLU_OP_SITU, GGML_TYPE_F32, { 5, 7, 11, 13 }, v));
+        test_cases.emplace_back(new test_glu_split(GGML_GLU_OP_SITU, GGML_TYPE_F32, { 8192, 17, 1, 1 }, v));
+    }
+
     // glu ops
     for (ggml_type type : {GGML_TYPE_F16, GGML_TYPE_F32, GGML_TYPE_BF16}) {
         for (int v : {0, 1}) {
             for (int op = 0; op < GGML_GLU_OP_COUNT; op++) {
-                if (op == GGML_GLU_OP_SWIGLU_OAI || op == GGML_GLU_OP_SWIGLU_CLAMP) {
+                if (op == GGML_GLU_OP_SWIGLU_OAI || op == GGML_GLU_OP_SWIGLU_CLAMP || op == GGML_GLU_OP_SITU) {
                     continue;
                 }
 
@@ -12045,7 +12358,8 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         test_cases.emplace_back(new test_rope_apply({64, 5, 33, 2}, interleaved, true, false, 32));
         test_cases.emplace_back(new test_rope_apply({10, 3, 7, 3}, interleaved, false, true, 4));
         test_cases.emplace_back(new test_rope_apply({128, 4, 9, 1}, interleaved, true, true, 126));
-        test_cases.emplace_back(new test_rope_apply({9, 3, 5, 2}, interleaved, false, false, 2));
+        // the registered op needs an even head size; an odd one goes back to the caller's generic path
+        test_cases.emplace_back(new test_rope_apply({10, 3, 5, 2}, interleaved, false, false, 2));
     }
     test_cases.emplace_back(new test_group_norm_mul_add(GGML_TYPE_F32, {64, 64, 320, 1}));
     test_cases.emplace_back(new test_group_norm_mul_add(GGML_TYPE_F32, {9, 9, 1280, 1}));

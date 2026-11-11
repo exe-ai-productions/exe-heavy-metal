@@ -1,6 +1,8 @@
 #ifndef __EXAMPLES_COMMON_COMMON_H__
 #define __EXAMPLES_COMMON_COMMON_H__
 
+#include "generation_metadata.h"
+
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -20,7 +22,7 @@ std::string argv_to_utf8(int index, const char** argv);
 #define BOOL_STR(b) ((b) ? "true" : "false")
 
 extern const char* const modes_str[];
-#define SD_ALL_MODES_STR "img_gen, adetailer, vid_gen, convert, upscale, metadata"
+#define SD_ALL_MODES_STR "img_gen, adetailer, vid_gen, convert, upscale, metadata, vid_upscale"
 
 enum SDMode {
     IMG_GEN,
@@ -29,6 +31,7 @@ enum SDMode {
     CONVERT,
     UPSCALE,
     METADATA,
+    VID_UPSCALE,
     MODE_COUNT
 };
 
@@ -225,6 +228,7 @@ struct SDGenerationParams {
     std::string end_image_path;
     std::string mask_image_path;
     std::string control_image_path;
+    std::string control_type;
     std::string ip_adapter_image_path;
     std::vector<std::string> ref_image_paths;
     std::vector<std::string> ref_video_paths;
@@ -289,6 +293,7 @@ struct SDGenerationParams {
     std::string prompt_with_lora;  // for metadata record only
     std::vector<sd_lora_t> lora_vec;
     sd_hires_upscaler_t resolved_hires_upscaler;
+    sd_control_type_t resolved_control_type = SD_CONTROL_TYPE_NONE;
 
     // Owned execution payload.
     SDImageOwner init_image;
@@ -338,13 +343,4 @@ struct SDGenerationParams {
 };
 
 std::string version_string();
-std::string build_sdcpp_image_metadata_json(const SDContextParams& ctx_params,
-                                            const SDGenerationParams& gen_params,
-                                            int64_t seed,
-                                            SDMode mode = IMG_GEN);
-std::string get_image_params(const SDContextParams& ctx_params,
-                             const SDGenerationParams& gen_params,
-                             int64_t seed,
-                             SDMode mode = IMG_GEN);
-
 #endif  // __EXAMPLES_COMMON_COMMON_H__

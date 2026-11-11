@@ -183,6 +183,12 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_heavy_met
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_heavy_metal_exe_group_norm (ggml_metal_library_t lib, bool vec4);
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_heavy_metal_exe_concat     (ggml_metal_library_t lib);
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_heavy_metal_exe_rope_apply (ggml_metal_library_t lib, bool interleaved, bool packed);
+
+// The registered operator "sd.rope_apply.v1" (stable-diffusion.cpp) runs natively on the ROPE_APPLY kernel:
+// x F32 [head_dim, heads, tokens, batch], pe F32 [2, 2, n_rot/2, tokens], attribute int32 interleaved,
+// output contiguous F32 [head_dim, tokens, heads*batch].
+bool ggml_metal_op_is_ext_rope(const struct ggml_tensor * op);
+bool ggml_metal_op_ext_rope_interleaved(const struct ggml_tensor * op);
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_heavy_metal_exe_add_mul_id (ggml_metal_library_t lib, bool packed, bool shift);
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_im2col_flat        (ggml_metal_library_t lib, const struct ggml_tensor * op);
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_cpy_fast           (ggml_metal_library_t lib, enum ggml_type tsrc, enum ggml_type tdst, const char * variant); // "row", "tile" or "inner"

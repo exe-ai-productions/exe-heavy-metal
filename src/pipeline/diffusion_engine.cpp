@@ -42,6 +42,7 @@
 #include "model/diffusion/animatediff.hpp"
 #include "model/diffusion/control.hpp"
 #include "model/diffusion/model.hpp"
+#include "model/diffusion/z_image.hpp"
 #include "model/vae/audio_vae.hpp"
 #include "model/vae/ltx_vae.hpp"
 #include "model/vae/vae.hpp"
@@ -232,6 +233,15 @@ bool StableDiffusionGGML::apply_model_update(ModelLoader candidate,
             if (runner_state_.sources.at(entry.first) != runner_source_versions(entry.first, candidate)) {
                 groups.insert(entry.first);
             }
+        }
+    }
+    if (sd_version_is_z_image(version) && sd_version_is_z_image(next_version)) {
+        if (groups.count(RunnerGroup::ControlNet) > 0) {
+            groups.insert(RunnerGroup::Core);
+        }
+        if (groups.count(RunnerGroup::Core) > 0 &&
+            model_manager->registered_params_size({ModelComponent::ControlNet}) > 0) {
+            groups.insert(RunnerGroup::ControlNet);
         }
     }
     runner_state_.ready = false;
@@ -665,87 +675,93 @@ bool StableDiffusionGGML::init_model_loader(ModelLoader& model_loader, ModelConf
     const auto* sd_ctx_params = &configuration.params;
     auto& use_tae             = configuration.use_tae;
     auto& use_audio_vae       = configuration.use_audio_vae;
+    const auto load_model     = [&](const char* name, const char* path, const std::string& prefix = "") {
+        if (!model_loader.init_from_file(path, prefix))
+            return false;
+        configuration.record_model(name, path);
+        return true;
+    };
     if (strlen(SAFE_STR(sd_ctx_params->model_path)) > 0) {
         LOG_INFO("loading model from '%s'", sd_ctx_params->model_path);
-        if (!model_loader.init_from_file(sd_ctx_params->model_path)) {
+        if (!load_model("model", sd_ctx_params->model_path)) {
             LOG_ERROR("init model loader from file failed: '%s'", sd_ctx_params->model_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->diffusion_model_path)) > 0) {
         LOG_INFO("loading diffusion model from '%s'", sd_ctx_params->diffusion_model_path);
-        if (!model_loader.init_from_file(sd_ctx_params->diffusion_model_path, "model.diffusion_model.")) {
+        if (!load_model("diffusion_model", sd_ctx_params->diffusion_model_path, "model.diffusion_model.")) {
             LOG_WARN("loading diffusion model from '%s' failed", sd_ctx_params->diffusion_model_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->high_noise_diffusion_model_path)) > 0) {
         LOG_INFO("loading high noise diffusion model from '%s'", sd_ctx_params->high_noise_diffusion_model_path);
-        if (!model_loader.init_from_file(sd_ctx_params->high_noise_diffusion_model_path, "model.high_noise_diffusion_model.")) {
+        if (!load_model("high_noise_diffusion_model", sd_ctx_params->high_noise_diffusion_model_path, "model.high_noise_diffusion_model.")) {
             LOG_WARN("loading diffusion model from '%s' failed", sd_ctx_params->high_noise_diffusion_model_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->uncond_diffusion_model_path)) > 0) {
         LOG_INFO("loading unconditional diffusion model from '%s'", sd_ctx_params->uncond_diffusion_model_path);
-        if (!model_loader.init_from_file(sd_ctx_params->uncond_diffusion_model_path, "model.diffusion_model.uncond.")) {
+        if (!load_model("uncond_diffusion_model", sd_ctx_params->uncond_diffusion_model_path, "model.diffusion_model.uncond.")) {
             LOG_WARN("loading unconditional diffusion model from '%s' failed", sd_ctx_params->uncond_diffusion_model_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->clip_l_path)) > 0) {
         LOG_INFO("loading clip_l from '%s'", sd_ctx_params->clip_l_path);
-        if (!model_loader.init_from_file(sd_ctx_params->clip_l_path, "clip_l.")) {
+        if (!load_model("clip_l", sd_ctx_params->clip_l_path, "clip_l.")) {
             LOG_WARN("loading clip_l from '%s' failed", sd_ctx_params->clip_l_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->clip_g_path)) > 0) {
         LOG_INFO("loading clip_g from '%s'", sd_ctx_params->clip_g_path);
-        if (!model_loader.init_from_file(sd_ctx_params->clip_g_path, "clip_g.")) {
+        if (!load_model("clip_g", sd_ctx_params->clip_g_path, "clip_g.")) {
             LOG_WARN("loading clip_g from '%s' failed", sd_ctx_params->clip_g_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->clip_vision_path)) > 0) {
         LOG_INFO("loading clip_vision from '%s'", sd_ctx_params->clip_vision_path);
-        if (!model_loader.init_from_file(sd_ctx_params->clip_vision_path, "clip_vision.")) {
+        if (!load_model("clip_vision", sd_ctx_params->clip_vision_path, "clip_vision.")) {
             LOG_WARN("loading clip_vision from '%s' failed", sd_ctx_params->clip_vision_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->t5xxl_path)) > 0) {
         LOG_INFO("loading t5xxl from '%s'", sd_ctx_params->t5xxl_path);
-        if (!model_loader.init_from_file(sd_ctx_params->t5xxl_path, "text_encoders.t5xxl.transformer.")) {
+        if (!load_model("t5xxl", sd_ctx_params->t5xxl_path, "text_encoders.t5xxl.transformer.")) {
             LOG_WARN("loading t5xxl from '%s' failed", sd_ctx_params->t5xxl_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->pulid_weights_path)) > 0) {
         LOG_INFO("loading PuLID weights from '%s'", sd_ctx_params->pulid_weights_path);
-        if (!model_loader.init_from_file(sd_ctx_params->pulid_weights_path,
-                                         "model.diffusion_model.")) {
+        if (!load_model("pulid_weights", sd_ctx_params->pulid_weights_path,
+                        "model.diffusion_model.")) {
             LOG_WARN("loading PuLID weights from '%s' failed", sd_ctx_params->pulid_weights_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->llm_path)) > 0) {
         LOG_INFO("loading llm from '%s'", sd_ctx_params->llm_path);
-        if (!model_loader.init_from_file(sd_ctx_params->llm_path, "text_encoders.llm.")) {
+        if (!load_model("llm", sd_ctx_params->llm_path, "text_encoders.llm.")) {
             LOG_WARN("loading llm from '%s' failed", sd_ctx_params->llm_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->llm_vision_path)) > 0) {
         LOG_INFO("loading llm vision from '%s'", sd_ctx_params->llm_vision_path);
-        if (!model_loader.init_from_file(sd_ctx_params->llm_vision_path, "text_encoders.llm.visual.")) {
+        if (!load_model("llm_vision", sd_ctx_params->llm_vision_path, "text_encoders.llm.visual.")) {
             LOG_WARN("loading llm vision from '%s' failed", sd_ctx_params->llm_vision_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->vae_path)) > 0) {
         LOG_INFO("loading vae from '%s'", sd_ctx_params->vae_path);
-        if (!model_loader.init_from_file(sd_ctx_params->vae_path, "vae.")) {
+        if (!load_model("vae", sd_ctx_params->vae_path, "vae.")) {
             LOG_WARN("loading vae from '%s' failed", sd_ctx_params->vae_path);
             external_vae_is_invalid = true;
         }
@@ -753,7 +769,7 @@ bool StableDiffusionGGML::init_model_loader(ModelLoader& model_loader, ModelConf
 
     if (strlen(SAFE_STR(sd_ctx_params->taesd_path)) > 0) {
         LOG_INFO("loading tae from '%s'", sd_ctx_params->taesd_path);
-        if (!model_loader.init_from_file(sd_ctx_params->taesd_path, "tae.")) {
+        if (!load_model("taesd", sd_ctx_params->taesd_path, "tae.")) {
             LOG_WARN("loading tae from '%s' failed", sd_ctx_params->taesd_path);
         } else {
             use_tae = true;
@@ -762,14 +778,14 @@ bool StableDiffusionGGML::init_model_loader(ModelLoader& model_loader, ModelConf
 
     if (strlen(SAFE_STR(sd_ctx_params->embeddings_connectors_path)) > 0) {
         LOG_INFO("loading embeddings connectors from '%s'", sd_ctx_params->embeddings_connectors_path);
-        if (!model_loader.init_from_file(sd_ctx_params->embeddings_connectors_path)) {
+        if (!load_model("embeddings_connectors", sd_ctx_params->embeddings_connectors_path, "embeddings_connectors.")) {
             LOG_WARN("loading embeddings connectors from '%s' failed", sd_ctx_params->embeddings_connectors_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->audio_vae_path)) > 0) {
         LOG_INFO("loading audio VAE from '%s'", sd_ctx_params->audio_vae_path);
-        if (!model_loader.init_from_file(sd_ctx_params->audio_vae_path)) {
+        if (!load_model("audio_vae", sd_ctx_params->audio_vae_path)) {
             LOG_WARN("loading audio VAE weights from '%s' failed", sd_ctx_params->audio_vae_path);
         } else {
             use_audio_vae = true;
@@ -778,15 +794,15 @@ bool StableDiffusionGGML::init_model_loader(ModelLoader& model_loader, ModelConf
 
     if (strlen(SAFE_STR(sd_ctx_params->audio_encoder_path)) > 0) {
         LOG_INFO("loading audio encoder (wav2vec2) from '%s'", sd_ctx_params->audio_encoder_path);
-        if (!model_loader.init_from_file(sd_ctx_params->audio_encoder_path, "wav2vec2.")) {
+        if (!load_model("audio_encoder", sd_ctx_params->audio_encoder_path, "wav2vec2.")) {
             LOG_WARN("loading audio encoder weights from '%s' failed", sd_ctx_params->audio_encoder_path);
         }
     }
 
     if (strlen(SAFE_STR(sd_ctx_params->motion_module_path)) > 0) {
         LOG_INFO("loading motion module (AnimateDiff) from '%s'", sd_ctx_params->motion_module_path);
-        if (!model_loader.init_from_file(sd_ctx_params->motion_module_path,
-                                         "model.diffusion_model.motion_module.")) {
+        if (!load_model("motion_module", sd_ctx_params->motion_module_path,
+                        "model.diffusion_model.motion_module.")) {
             LOG_WARN("loading motion module from '%s' failed", sd_ctx_params->motion_module_path);
         } else {
             configuration.animatediff_loaded = true;
@@ -800,8 +816,11 @@ bool StableDiffusionGGML::init_model_loader(ModelLoader& model_loader, ModelConf
         }
     }
 
+    if (configuration.control_net_file)
+        configuration.record_model("control_net", sd_ctx_params->control_net_path);
+
     if (strlen(SAFE_STR(sd_ctx_params->ip_adapter_path)) > 0) {
-        if (!model_loader.init_from_file(sd_ctx_params->ip_adapter_path)) {
+        if (!load_model("ip_adapter", sd_ctx_params->ip_adapter_path)) {
             LOG_ERROR("init ip-adapter model loader from file failed: '%s'", sd_ctx_params->ip_adapter_path);
             return false;
         }
@@ -809,6 +828,8 @@ bool StableDiffusionGGML::init_model_loader(ModelLoader& model_loader, ModelConf
 
     if (strlen(SAFE_STR(sd_ctx_params->photo_maker_path)) > 0) {
         configuration.photomaker_source_available = model_loader.add_file(sd_ctx_params->photo_maker_path, "pmid.");
+        if (configuration.photomaker_source_available)
+            configuration.record_model("photo_maker", sd_ctx_params->photo_maker_path);
         if (!configuration.photomaker_source_available) {
             LOG_WARN("loading stacked ID embedding from '%s' failed", sd_ctx_params->photo_maker_path);
         }
@@ -835,11 +856,13 @@ bool StableDiffusionGGML::set_sage_attention_enabled(bool enabled) {
         if (ctx == nullptr) {
             return false;
         }
-        auto* q        = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, 128, 128, 1, 1);
-        auto* k        = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, 128, 128, 1, 1);
-        auto* v        = ggml_new_tensor_4d(ctx, GGML_TYPE_F16, 128, 128, 1, 1);
-        auto* op       = ggml_sage_attn(ctx, q, k, v, 1.f / sqrtf(128.f), GGML_SAGE_ATTN_AUTO);
-        bool supported = true;
+        auto* q = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, 128, 128, 1, 1);
+        auto* k = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, 128, 128, 1, 1);
+        auto* v = ggml_new_tensor_4d(ctx, GGML_TYPE_F16, 128, 128, 1, 1);
+        GGMLRunnerContext probe_ctx;
+        probe_ctx.ggml_ctx = ctx;
+        auto* op           = ggml_ext_sage_attn(&probe_ctx, q, k, v, 1.f / sqrtf(128.f), GGML_SAGE_ATTN_AUTO);
+        bool supported     = true;
         for (auto backend : backend_manager.runtime_backends(SDBackendModule::DIFFUSION)) {
             if (!ggml_backend_supports_op(backend, op)) {
                 LOG_ERROR("SageAttention is unavailable on %s; it requires patched GGML, CUDA Toolkit 12.0 or newer, and SM80 or newer kernels",
@@ -998,7 +1021,7 @@ void StableDiffusionGGML::configure_weight_loading() {
     bool have_int8_tensorwise = false;
     bool have_quant_type_rule = false;
     for (const auto& [_, tensor_storage] : model_loader.get_tensor_storage_map()) {
-        if (tensor_storage.is_int8_tensorwise) {
+        if (tensor_storage.is_int8_tensorwise || tensor_storage.w4_convrot_kind) {
             have_int8_tensorwise = true;
         }
         if (tensor_storage.expected_type < GGML_TYPE_COUNT && ggml_is_quantized(tensor_storage.expected_type)) {
@@ -1030,7 +1053,7 @@ void StableDiffusionGGML::configure_weight_loading() {
     } else if (sd_ctx_params->lora_apply_mode == LORA_APPLY_IMMEDIATELY) {
         if (have_int8_tensorwise) {
             LOG_WARN(
-                "INT8 tensorwise weights do not support the immediately LoRA apply mode; "
+                "ComfyUI INT8/packed INT4 weights do not support the immediately LoRA apply mode; "
                 "using at_runtime instead");
             apply_lora_immediately = false;
         } else if (row_split_active()) {
@@ -1115,6 +1138,27 @@ bool StableDiffusionGGML::build_vae_runners() {
 bool StableDiffusionGGML::build_control_net_runner() {
     if (config_->control_net_file == 0) {
         return true;
+    }
+    if (sd_version_is_z_image(version)) {
+        auto z_image = std::dynamic_pointer_cast<ZImage::ZImageRunner>(diffusion_model);
+        if (z_image == nullptr || !z_image->control_enabled()) {
+            LOG_WARN("z-image control net file present but the diffusion model has no control weights; ignoring");
+            return true;
+        }
+        std::map<std::string, ggml_tensor*> control_tensors;
+        z_image->get_control_param_tensors(control_tensors);
+        if (control_tensors.empty()) {
+            LOG_ERROR("z-image control net has no param tensors to register");
+            return false;
+        }
+        ModelManager::ResidencyMode residency_mode = backend_manager.params_backend_is_disk(SDBackendModule::DIFFUSION)
+                                                         ? ModelManager::ResidencyMode::Disk
+                                                         : ModelManager::ResidencyMode::ParamBackend;
+        return model_manager->register_param_tensors(ModelComponent::ControlNet,
+                                                     std::move(control_tensors),
+                                                     residency_mode,
+                                                     backend_for(SDBackendModule::DIFFUSION),
+                                                     params_backend_for(SDBackendModule::DIFFUSION));
     }
     if (!sd::model_builders::build_control_net_runner(model_build_context(), control_net)) {
         return false;
@@ -1449,7 +1493,7 @@ bool StableDiffusionGGML::build_denoiser() {
         }
         case H3_AV_FLOW_PRED: {
             LOG_INFO("running in MiniMax H3 AV FLOW mode");
-            denoiser = std::make_shared<H3AVFlowDenoiser>(default_flow_shift, 3.f, get_latent_channel());
+            denoiser = std::make_shared<H3AVFlowDenoiser>(default_flow_shift, version == VERSION_P_H3_IMAGE ? 1.f : 3.f, get_latent_channel());
             break;
         }
         case MING_IMAGE_FLOW_PRED: {
@@ -1765,6 +1809,7 @@ void StableDiffusionGGML::lora_stat() {
 }
 
 bool StableDiffusionGGML::apply_loras(const sd_lora_t* loras, uint32_t lora_count) {
+    generation_progress.report("preparing", "loras");
     std::vector<ModelManager::LoraSpec> all_loras;
     all_loras.reserve(lora_count);
     for (uint32_t i = 0; i < lora_count; i++) {
@@ -2201,6 +2246,7 @@ void StableDiffusionGGML::report_sample_progress(int step,
                                  ? (now - *last_progress_us) / 1000000.f
                                  : 0.f;
         pretty_progress(showstep, (int)total_steps, step_seconds);
+        generation_progress.report_sample(showstep, static_cast<int64_t>(total_steps));
         if (last_progress_us != nullptr) {
             *last_progress_us = now;
         }
@@ -2226,6 +2272,10 @@ static sd::Tensor<float> batch_two_condition_tensors(const sd::Tensor<float>& a,
         }
     }
     return sd::ops::concat(a, b, static_cast<size_t>(batch_dim));
+}
+
+bool StableDiffusionGGML::set_control_type(sd_control_type_t type) {
+    return control_net == nullptr || control_net->set_control_type(type);
 }
 
 void StableDiffusionGGML::compute_sample_controls(const sd::Tensor<float>& control_image,
@@ -2378,6 +2428,9 @@ sd::Tensor<float> StableDiffusionGGML::sample(const std::shared_ptr<DiffusionMod
 
     int64_t last_progress_us = ggml_time_us();
     sd_begin_preview_pass(static_cast<int>(steps));
+    generation_progress.begin_sample(static_cast<int64_t>(steps),
+                                     work_diffusion_model == high_noise_diffusion_model ? "high_noise" : high_noise_diffusion_model != nullptr ? "low_noise"
+                                                                                                                                               : "");
     SamplePreviewContext preview = prepare_sample_preview_context();
 
     sd::Tensor<float> processed_init_latent       = denoiser->process_latent_in(init_latent);
@@ -2388,6 +2441,15 @@ sd::Tensor<float> StableDiffusionGGML::sample(const std::shared_ptr<DiffusionMod
                                                         ? denoiser->noise_scaling(sigmas[0], noise, sampling_init_latent)
                                                         : sampling_init_latent;
     sd::Tensor<float> denoised                    = x_t;
+
+#ifdef SD_USE_UPSTREAM_GGML
+    // workaround for sd.cpp #2149
+    const auto diffusion_backends   = backend_manager.runtime_backends(SDBackendModule::DIFFUSION);
+    const bool batch_cfg_backend_ok = std::none_of(diffusion_backends.begin(), diffusion_backends.end(),
+                                                   [](ggml_backend_t backend) { return sd_backend_is(backend, "MTL"); });
+#else
+    const bool batch_cfg_backend_ok = true;
+#endif
 
     auto denoise = [&](const sd::Tensor<float>& x, float sigma, int step) -> sd::guidance::GuiderOutput {
         if (get_cancel_flag() == SD_CANCEL_ALL) {
@@ -2547,14 +2609,16 @@ sd::Tensor<float> StableDiffusionGGML::sample(const std::shared_ptr<DiffusionMod
                 diffusion_params.extra = LLaDAImageDiffusionExtra{
                     condition.extra_c_crossattns.empty() ? nullptr : &condition.extra_c_crossattns[0]};
             } else if (sd_version_is_minimax_h3(version)) {
-                diffusion_params.extra = MiniMaxH3DiffusionExtra{
+                const size_t target_index = static_cast<size_t>(std::abs(step));
+                diffusion_params.extra    = MiniMaxH3DiffusionExtra{
                     condition.c_token_types.empty() ? nullptr : &condition.c_token_types,
                     condition.c_position_ids.empty() ? nullptr : &condition.c_position_ids,
                     condition.c_ref_audios.empty() ? nullptr : &condition.c_ref_audios,
                     condition.c_reference_blocks.empty() ? nullptr : &condition.c_reference_blocks,
-                    audio_length,
+                    version == VERSION_P_H3_IMAGE ? 2 : audio_length,
                     std::isfinite(active_flow_shift) ? active_flow_shift : 12.f,
-                    3.f};
+                    version == VERSION_P_H3_IMAGE ? 1.f : 3.f,
+                    target_index > 0 && target_index < sigmas.size() ? sigmas[target_index] : NAN};
             } else if (sd_version_is_ltxav(version)) {
                 diffusion_params.extra = LTXAVDiffusionExtra{
                     nullptr,
@@ -2568,6 +2632,10 @@ sd::Tensor<float> StableDiffusionGGML::sample(const std::shared_ptr<DiffusionMod
             } else if (sd_version_is_sensenova_u1(version)) {
                 diffusion_params.extra = SenseNovaU1DiffusionExtra{
                     condition.c_input_ids.empty() ? nullptr : &condition.c_input_ids};
+            } else if (sd_version_is_z_image(version)) {
+                if (!control_image.empty()) {
+                    diffusion_params.extra = ZImageDiffusionExtra{&control_image, control_strength};
+                }
             } else {
                 diffusion_params.extra = std::monostate{};
             }
@@ -2705,6 +2773,7 @@ sd::Tensor<float> StableDiffusionGGML::sample(const std::shared_ptr<DiffusionMod
         }
 
         const bool batch_cfg_ok = config_->params.batched_cfg &&
+                                  batch_cfg_backend_ok &&
                                   sd_version_is_unet(version) &&
                                   !uncond.empty() &&
                                   img_uncond.empty() &&
@@ -2825,6 +2894,18 @@ sd::Tensor<float> StableDiffusionGGML::sample(const std::shared_ptr<DiffusionMod
         return output;
     };
 
+    {
+        std::ostringstream oss;
+        oss << std::setprecision(std::numeric_limits<float>::max_digits10);
+        for (size_t i = 0; i < sigmas.size(); ++i) {
+            if (i != 0) {
+                oss << ",";
+            }
+            oss << sigmas[i];
+        }
+        LOG_DEBUG("sigmas: %s", oss.str().c_str());
+    }
+
     auto x0_opt = sample_k_diffusion(method, denoise, x_t, sigmas, sampler_rng, eta, is_flow_denoiser, extra_sample_args, denoiser);
     if (x0_opt.empty()) {
         LOG_ERROR("Diffusion model sampling failed");
@@ -2868,7 +2949,12 @@ int StableDiffusionGGML::get_image_channels() const {
 
 int StableDiffusionGGML::get_image_seq_len(int h, int w) {
     int vae_scale_factor = get_vae_scale_factor();
-    return (h / vae_scale_factor) * (w / vae_scale_factor);
+    int patch_size       = diffusion_model != nullptr ? diffusion_model->get_patch_size() : 1;
+    int latent_h         = h / vae_scale_factor;
+    int latent_w         = w / vae_scale_factor;
+    int tokens_h         = (latent_h + patch_size - 1) / patch_size;
+    int tokens_w         = (latent_w + patch_size - 1) / patch_size;
+    return tokens_h * tokens_w;
 }
 
 sd::Tensor<float> StableDiffusionGGML::generate_init_latent(int width,
@@ -2926,6 +3012,7 @@ int StableDiffusionGGML::align_video_frames(int frames) {
 }
 
 sd::Tensor<float> StableDiffusionGGML::encode_to_vae_latents(const sd::Tensor<float>& x) {
+    generation_progress.report("vae_encode");
     auto latents = first_stage_model->encode(n_threads, x, vae_tiling_params, circular_x, circular_y);
     if (latents.empty()) {
         return {};
@@ -2946,10 +3033,14 @@ sd::Tensor<float> StableDiffusionGGML::encode_first_stage(const sd::Tensor<float
 }
 
 sd::Tensor<float> StableDiffusionGGML::decode_first_stage(const sd::Tensor<float>& x, bool decode_video) {
+    generation_progress.report("vae_decode");
     if (sd_version_is_pid(version) || sd_version_is_minit2i(version) || version == VERSION_IRIS) {
         return sd::ops::clamp((x + 1.f) * 0.5f, 0.0f, 1.0f);
     }
-    auto latents                      = first_stage_model->diffusion_to_vae_latents(x);
+    auto image_latents                = version == VERSION_P_H3_IMAGE && x.dim() == 5
+                                            ? sd::ops::slice(x, 3, 0, get_latent_channel())
+                                            : x;
+    auto latents                      = first_stage_model->diffusion_to_vae_latents(image_latents);
     auto tiling_params                = first_stage_model->resolve_tiling_params(vae_tiling_params);
     const bool prefer_temporal_tiling = decode_video && latents.dim() == 5 && latents.shape()[2] > 1 &&
                                         first_stage_model->can_temporal_tile_decode();
@@ -2963,6 +3054,9 @@ sd::Tensor<float> StableDiffusionGGML::decode_first_stage(const sd::Tensor<float
             return {};
         }
         auto decoded = first_stage_model->decode(n_threads, latents, tiling_params, decode_video, circular_x, circular_y);
+        if (version == VERSION_P_H3_IMAGE && !decoded.empty() && decoded.dim() == 5) {
+            decoded = decoded.squeeze(2);
+        }
         if (!decoded.empty() ||
             !sd::backend_fit::prepare_vae_decode_retry_tiling(tiling_params, prefer_temporal_tiling,
                                                               first_stage_model->last_compute_status(),
@@ -2994,6 +3088,7 @@ sd::Tensor<float> StableDiffusionGGML::decode_ltx_audio_latent(const sd::Tensor<
     if (audio_vae_model == nullptr || audio_latent.empty()) {
         return {};
     }
+    generation_progress.report("audio_decode");
     auto waveform = audio_vae_model->decode(n_threads, audio_latent);
     return waveform;
 }
@@ -3162,7 +3257,7 @@ RefImageParams StableDiffusionGGML::resolve_ref_image_params(const char* ref_ima
     if (params.force_ref_timestep_zero && !sd_version_is_krea2(version)) {
         LOG_WARN("force_ref_timestep_zero is only supported by Krea2 architecture for now");
     }
-    if (sd_version_is_minimax_h3(version)) {
+    if (version == VERSION_MINIMAX_H3) {
         // H3 consumes references as VAE latents in its own packed sequence rather than
         // through the generic conditioner/DiT reference path, so ref_image_size is the
         // only arg it acts on. Everything else is reported as ineffective rather than

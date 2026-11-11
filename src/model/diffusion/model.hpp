@@ -145,6 +145,7 @@ struct MiniMaxH3DiffusionExtra {
     int audio_length                                              = 0;
     float video_sigma_shift                                       = 12.f;
     float audio_sigma_shift                                       = 3.f;
+    float video_sigma_next                                        = NAN;
 };
 
 struct MiniT2IDiffusionExtra {
@@ -171,6 +172,11 @@ struct MingImageDiffusionExtra {
     const sd::Tensor<float>* direct_context = nullptr;
 };
 
+struct ZImageDiffusionExtra {
+    const sd::Tensor<float>* control_latent = nullptr;
+    float strength                          = 1.f;
+};
+
 using DiffusionExtraParams = std::variant<std::monostate,
                                           UNetDiffusionExtra,
                                           SkipLayerDiffusionExtra,
@@ -186,7 +192,8 @@ using DiffusionExtraParams = std::variant<std::monostate,
                                           SenseNovaU1DiffusionExtra,
                                           HunyuanVideoDiffusionExtra,
                                           LLaDAImageDiffusionExtra,
-                                          MingImageDiffusionExtra>;
+                                          MingImageDiffusionExtra,
+                                          ZImageDiffusionExtra>;
 
 struct DiffusionParams {
     const sd::Tensor<float>* x                        = nullptr;
@@ -230,6 +237,10 @@ public:
 
     virtual sd::Tensor<float> compute(int n_threads,
                                       const DiffusionParams& diffusion_params) = 0;
+
+    virtual int get_patch_size() const {
+        return 1;
+    }
 
     void get_param_tensors(std::map<std::string, ggml_tensor*>& tensors) {
         get_param_tensors(tensors, prefix);

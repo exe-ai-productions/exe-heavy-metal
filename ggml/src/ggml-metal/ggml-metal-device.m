@@ -1603,7 +1603,7 @@ static bool ggml_metal_supports_mul_mat_op(
     return mm_path;
 }
 
-// GGML_METAL_ROPE_APPLY=0 turns ROPE_APPLY off on Metal. Read once per process.
+// GGML_METAL_ROPE_APPLY=0 turns the rotary kernel off on Metal. Read once per process.
 static bool ggml_metal_rope_apply_enabled(void) {
     static int enabled = -1;
     if (enabled < 0) {
@@ -1776,11 +1776,10 @@ bool ggml_metal_device_supports_op(ggml_metal_device_t dev, const struct ggml_te
             return op->src[0]->nb[0] == sizeof(float) && op->src[1]->nb[0] == sizeof(float) &&
                 op->src[2]->nb[0] == sizeof(float) && (op->src[4] == NULL || op->src[4]->nb[0] == sizeof(float)) &&
                 op->ne[0] <= INT32_MAX && op->ne[1] <= UINT32_MAX;
-        case GGML_OP_ROPE_APPLY:
-            // switched off, the op goes back to the caller, which builds it from permutes and products
-            return ggml_metal_rope_apply_enabled() &&
-                op->src[0]->type == GGML_TYPE_F32 && op->src[1]->type == GGML_TYPE_F32 && op->type == GGML_TYPE_F32 &&
-                ggml_is_contiguous(op);
+        case GGML_OP_CUSTOM:
+            // only the registered rotary op; switched off, it goes back to the caller, which builds it
+            // from permutes and products
+            return ggml_metal_rope_apply_enabled() && ggml_metal_op_is_ext_rope(op) && ggml_is_contiguous(op);
         case GGML_OP_IM2COL:
             return ggml_is_contiguous(op->src[1]) && op->src[1]->type == GGML_TYPE_F32 && (op->type == GGML_TYPE_F16 || op->type == GGML_TYPE_F32);
         case GGML_OP_CONV_2D:

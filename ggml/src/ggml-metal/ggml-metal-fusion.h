@@ -46,6 +46,8 @@ typedef enum ggml_metal_fusion_id {
     GGML_METAL_FUSION_MUL_MAT_SCALE, // SCALE + MUL_MAT + SCALE + bias ADD, all but MUL_MAT optional (in the mat-mat kernel)
     GGML_METAL_FUSION_SCALE_CPY,    // (CONT +) SCALE + CPY to F16 (one pass of the unary kernel)
     GGML_METAL_FUSION_CONT_CPY,     // CONT (+ RESHAPE) + CPY to F16 (one copy from the CONT's source)
+    GGML_METAL_FUSION_MUL_ADD,      // MUL + ADD (+ ADD): (a + b*s) + t in the ADD_MUL_ID kernel (modulation, gated residual)
+    GGML_METAL_FUSION_REPEAT_MUL,   // REPEAT + MUL: the MUL broadcasts the REPEAT's source (per-head gates)
 } ggml_metal_fusion_id;
 
 struct ggml_metal_fusion; // defined in ggml-metal-fusion.cpp
@@ -95,6 +97,18 @@ const ggml_metal_fusion * ggml_metal_fusion_next(
         int idx,
         ggml_metal_fusion_mode mode,
         int * n_out);
+
+// the source of a (CONT +) SCALE + PERMUTE + CPY group seen through the PERMUTE: out is src with its dims permuted
+// as perm's op params say (ne and nb only)
+void ggml_metal_fusion_permuted_source(const struct ggml_tensor * src, const struct ggml_tensor * perm,
+        struct ggml_tensor * out);
+
+// operands of a GGML_METAL_FUSION_MUL_ADD group (nodes: MUL, ADD and, for n_ops == 3, the second ADD):
+// dst = (a + b*s) + t, t null without the second ADD
+bool ggml_metal_fusion_mul_add_operands(
+        const struct ggml_tensor * const * nodes, int n_ops,
+        const struct ggml_tensor ** a, const struct ggml_tensor ** b,
+        const struct ggml_tensor ** s, const struct ggml_tensor ** t);
 
 // optimize phase: maximum number of nodes starting at idx (a raw sequential graph index) that
 // could be fused on a device with props, chaining patterns back-to-back. returns at least 1.

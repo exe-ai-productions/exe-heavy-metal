@@ -1,4 +1,5 @@
 #include "generation.h"
+#include "generation_info.h"
 
 #include <algorithm>
 #include <cmath>
@@ -117,6 +118,60 @@ namespace sd::pipeline {
                    channels);
     }
 
+    static sd::Tensor<float> encode_z_image_control_latent(StableDiffusionGGML* sd, const sd::Tensor<float>& control_rgb) {
+        sd::Tensor<float> vae_output = sd->first_stage_model->encode(sd->n_threads,
+                                                                     control_rgb,
+                                                                     sd->vae_tiling_params,
+                                                                     sd->circular_x,
+                                                                     sd->circular_y);
+        if (vae_output.empty()) {
+            LOG_ERROR("failed to encode control image");
+            return {};
+        }
+        // TAE encode already returns the latent; KL/Flux VAE returns a mean/logvar pair.
+        sd::Tensor<float> ctrl_latent = sd->first_stage_model->get_desc() == "taesd"
+                                            ? vae_output
+                                            : sd::ops::chunk(vae_output, 2, 2)[0];
+        ctrl_latent                   = sd->first_stage_model->vae_to_diffusion_latents(ctrl_latent);
+        if (ctrl_latent.empty() || ctrl_latent.dim() != 4 || ctrl_latent.shape()[2] > 33) {
+            LOG_ERROR("failed to encode control image");
+            return {};
+        }
+        std::vector<int64_t> padded_shape = ctrl_latent.shape();
+        padded_shape[2]                   = 33;
+        sd::Tensor<float> padded(padded_shape);
+        sd::ops::slice_assign(&padded, 2, 0, ctrl_latent.shape()[2], ctrl_latent);
+        return padded;
+    }
+
+    static sd::Tensor<float> resize_ph3_reference(const sd::Tensor<float>& image, int64_t pixels) {
+        double scale   = std::min(1.0, std::sqrt(static_cast<double>(pixels) / (image.shape()[0] * image.shape()[1])));
+        int64_t width  = std::max<int64_t>(32, static_cast<int64_t>(std::nearbyint(image.shape()[0] * scale / 32)) * 32);
+        int64_t height = std::max<int64_t>(32, static_cast<int64_t>(std::nearbyint(image.shape()[1] * scale / 32)) * 32);
+        if (width == image.shape()[0] && height == image.shape()[1]) {
+            return image;
+        }
+        return sd::ops::interpolate(image, {width, height, image.shape()[2], image.shape()[3]}, sd::ops::InterpolateMode::Lanczos);
+    }
+
+    static sd::Tensor<float> pack_ph3_image_latent(const sd::Tensor<float>& image,
+                                                   const sd::Tensor<float>& previous = {}) {
+        auto video = image.dim() == 4 ? image.unsqueeze(2) : image;
+        GGML_ASSERT(video.dim() == 5 && video.shape()[2] == 1 && video.shape()[3] == 24 && video.shape()[4] == 1);
+        const int64_t spatial = video.shape()[0] * video.shape()[1];
+        // The image DiT still attends to two stereo audio latents (32 channels).
+        auto shape = video.shape();
+        shape[3] += (128 + spatial - 1) / spatial;
+        auto packed = sd::zeros<float>(shape);
+        std::copy_n(video.data(), video.numel(), packed.data());
+        if (!previous.empty()) {
+            const int64_t offset = previous.shape()[0] * previous.shape()[1] * 24;
+            GGML_ASSERT(previous.numel() >= offset + 128);
+            std::copy_n(previous.data() + offset, 128, packed.data() + video.numel());
+        }
+        return packed;
+    }
+
     static std::optional<ImageGenerationLatents> prepare_image_generation_latents(StableDiffusionGGML* sd,
                                                                                   const sd_img_gen_params_t* sd_img_gen_params,
                                                                                   GenerationRequest* request,
@@ -198,6 +253,9 @@ namespace sd::pipeline {
 
         if (sd_img_gen_params->control_image.data != nullptr) {
             control_image_tensor = sd_image_to_tensor(sd_img_gen_params->control_image, request->width, request->height);
+            if (!sd->set_control_type(request->control_type)) {
+                return std::nullopt;
+            }
         }
 
         if (init_image_tensor.empty() || mask_image_tensor.empty()) {
@@ -250,10 +308,22 @@ namespace sd::pipeline {
         }
 
         if (!control_image_tensor.empty()) {
-            control_latent = sd->encode_first_stage(control_image_tensor);
-            if (control_latent.empty()) {
-                LOG_ERROR("failed to encode control image");
-                return std::nullopt;
+            const bool z_image_control = sd_version_is_z_image(sd->version) &&
+                                         sd->model_manager->registered_params_size({ModelComponent::ControlNet}) > 0;
+            if (z_image_control) {
+                control_image_tensor = encode_z_image_control_latent(sd, control_image_tensor);
+                if (control_image_tensor.empty()) {
+                    return std::nullopt;
+                }
+            } else if (sd_version_is_z_image(sd->version)) {
+                LOG_WARN("control image provided but the z-image model has no control net; ignoring");
+                control_image_tensor = {};
+            } else {
+                control_latent = sd->encode_first_stage(control_image_tensor);
+                if (control_latent.empty()) {
+                    LOG_ERROR("failed to encode control image");
+                    return std::nullopt;
+                }
             }
         }
 
@@ -274,13 +344,20 @@ namespace sd::pipeline {
             LOG_INFO("EDIT mode");
         }
 
+        bool skip_vae_encoding = (sd->version == VERSION_HIDREAM_O1) || !(
+                                                                            ref_image_params.pass_to_dit || ref_image_params.vlm_use_vae_input ||
+                                                                            sd_version_is_unet_edit(sd->version) || sd_version_is_pid(sd->version));
+
         std::vector<sd::Tensor<float>> ref_latents;
         for (size_t i = 0; i < ref_images.size(); i++) {
-            if (sd->version == VERSION_HIDREAM_O1) {
+            if (skip_vae_encoding) {
                 continue;
             }
             sd::Tensor<float> ref_latent;
-            if (ref_image_params.resize_before_vae && !sd_version_is_pid(sd->version)) {
+            if (sd->version == VERSION_P_H3_IMAGE) {
+                auto resized = resize_ph3_reference(ref_images[i], int64_t(request->width) * request->height);
+                ref_latent   = sd->encode_first_stage(resized);
+            } else if (ref_image_params.resize_before_vae && !sd_version_is_pid(sd->version)) {
                 LOG_VERBOSE("auto resize ref images");
                 double vae_width;
                 double vae_height;
@@ -407,6 +484,16 @@ namespace sd::pipeline {
         }
 
         ImageGenerationLatents latents;
+        if (sd->version == VERSION_P_H3_IMAGE) {
+            init_latent = pack_ph3_image_latent(init_latent);
+            latent_mask = latent_mask.unsqueeze(2);
+            for (size_t i = 0; i < ref_latents.size(); ++i) {
+                latents.minimax_reference_blocks.push_back({MiniMaxH3ReferenceKind::IMAGE, static_cast<int32_t>(i), -1});
+            }
+            for (auto& image : ref_images) {
+                image = resize_ph3_reference(image, 1000000);
+            }
+        }
         latents.init_latent              = std::move(init_latent);
         latents.concat_latent            = std::move(concat_latent);
         latents.img_uncond_concat_latent = std::move(img_uncond_concat_latent);
@@ -444,6 +531,7 @@ namespace sd::pipeline {
 
         condition_params.ref_image_params = ref_image_params;
 
+        sd->generation_progress.report("conditioning", "extensions");
         sd->prepare_generation_extensions(request->pm_params,
                                           request->pulid_params,
                                           condition_params,
@@ -451,13 +539,17 @@ namespace sd::pipeline {
         sd->compute_ip_adapter_tokens(sd_img_gen_params->ip_adapter_image, sd_img_gen_params->ip_adapter_strength);
         int64_t prepare_start_ms         = ggml_time_ms();
         condition_params.zero_out_masked = false;
-        auto cond                        = sd->get_learned_condition(condition_params);
+        sd->generation_progress.report("conditioning", "positive_prompt");
+        auto cond = sd->get_learned_condition(condition_params);
         if (cond.empty()) {
             LOG_ERROR("failed to encode prompt");
             return std::nullopt;
         }
         if (cond.c_concat.empty() && ref_image_params.pass_to_dit) {
             cond.c_concat = latents->concat_latent;  // TODO: optimize
+        }
+        if (sd->version == VERSION_P_H3_IMAGE && ref_image_params.pass_to_dit) {
+            cond.c_reference_blocks = latents->minimax_reference_blocks;
         }
 
         bool use_ref_latent_img_cfg = request->use_img_uncond &&
@@ -494,6 +586,7 @@ namespace sd::pipeline {
                     // Keep source latents in CFG, but omit source images from the text encoder.
                     condition_params.ref_images = nullptr;
                 }
+                sd->generation_progress.report("conditioning", "negative_prompt");
                 uncond = sd->get_learned_condition(condition_params);
                 if (uncond.empty()) {
                     LOG_ERROR("failed to encode negative prompt");
@@ -502,6 +595,9 @@ namespace sd::pipeline {
             }
             if (uncond.c_concat.empty() && ref_image_params.pass_to_dit) {
                 uncond.c_concat = latents->concat_latent;  // TODO: optimize
+            }
+            if (sd->version == VERSION_P_H3_IMAGE && ref_image_params.pass_to_dit) {
+                uncond.c_reference_blocks = latents->minimax_reference_blocks;
             }
         }
 
@@ -522,6 +618,7 @@ namespace sd::pipeline {
                 if (use_ref_latent_img_cfg) {
                     condition_params.ref_images = &empty_ref_images;
                 }
+                sd->generation_progress.report("conditioning", "image_condition");
                 img_uncond = sd->get_learned_condition(condition_params);
                 if (img_uncond.empty()) {
                     LOG_ERROR("failed to encode image guidance prompt");
@@ -630,7 +727,7 @@ namespace sd::pipeline {
 
         int64_t t4 = ggml_time_ms();
         LOG_INFO("decode_first_stage completed, taking %.2fs", (t4 - t0) * 1.0f / 1000);
-        if (decoded_images.empty()) {
+        if (decoded_images.empty() || cancelled) {
             LOG_ERROR(cancelled ? "cancelled before any latent images were decoded" : "no decoded images");
             return nullptr;
         }
@@ -737,6 +834,7 @@ namespace sd::pipeline {
                 return {};
             }
 
+            sd->generation_progress.report("upscaling", "hires");
             sd::Tensor<float> upscaled_tensor;
             if (request.hires.upscaler == SD_HIRES_UPSCALER_MODEL) {
                 upscaled_tensor = upscaler->upscale_tensor(decoded);
@@ -791,7 +889,10 @@ namespace sd::pipeline {
     bool generate_image(StableDiffusionGGML* sd,
                         const sd_img_gen_params_t* sd_img_gen_params,
                         sd_image_t** images_out,
-                        int* num_images_out) {
+                        int* num_images_out,
+                        std::vector<nlohmann::json>* infos_out) {
+        if (infos_out)
+            infos_out->clear();
         if (images_out != nullptr) {
             *images_out = nullptr;
         }
@@ -813,6 +914,7 @@ namespace sd::pipeline {
         int64_t t0            = ggml_time_ms();
         sd->vae_tiling_params = sd_img_gen_params->vae_tiling_params;
         GenerationRequest request(sd, sd_img_gen_params);
+        const auto info = sd::generation_info(request, *sd_img_gen_params);
         sd::ImagePreprocessor preprocessing(sd_img_gen_params->image_preprocess.rules);
         sd_img_gen_params_t processed_params = *sd_img_gen_params;
         if (!preprocessing.prepare_inputs(processed_params, request.width, request.height))
@@ -833,6 +935,7 @@ namespace sd::pipeline {
         ImageVaeAxesGuard axes_guard(sd, sd_img_gen_params, request);
 
         SamplePlan plan(sd, sd_img_gen_params, request);
+        sd->generation_progress.report("preparing", "inputs");
         auto latents_opt = prepare_image_generation_latents(sd,
                                                             sd_img_gen_params,
                                                             &request,
@@ -853,7 +956,6 @@ namespace sd::pipeline {
             return false;
         }
         ImageGenerationEmbeds embeds = std::move(*embeds_opt);
-
         std::vector<sd::Tensor<float>> final_latents;
         int64_t denoise_start = ggml_time_ms();
         for (int b = 0; b < request.batch_count; b++) {
@@ -870,7 +972,7 @@ namespace sd::pipeline {
             }
 
             int64_t sampling_start = ggml_time_ms();
-            int64_t cur_seed       = request.seed + b;
+            int64_t cur_seed       = request.seed_for_batch(b);
             LOG_INFO("generating image: %i/%i - seed %" PRId64, b + 1, request.batch_count, cur_seed);
 
             sd->rng->manual_seed(cur_seed);
@@ -931,6 +1033,7 @@ namespace sd::pipeline {
             }
             LOG_INFO("hires fix: upscaling to %dx%d", request.hires.target_width, request.hires.target_height);
 
+            sd->generation_progress.report("upscaling", "hires");
             std::unique_ptr<UpscalerGGML> hires_upscaler;
             if (request.hires.upscaler == SD_HIRES_UPSCALER_MODEL) {
                 if (sd->get_cancel_flag() == SD_CANCEL_ALL) {
@@ -956,7 +1059,7 @@ namespace sd::pipeline {
             std::vector<float> hires_sigma_sched =
                 make_hires_sigma_schedule(sd,
                                           request.hires,
-                                          sd_img_gen_params->sample_params,
+                                          request.sample_params,
                                           plan.sample_method,
                                           plan.sample_steps,
                                           sd->get_image_seq_len(request.hires.target_height, request.hires.target_width),
@@ -969,21 +1072,50 @@ namespace sd::pipeline {
 
             std::vector<sd::Tensor<float>> hires_final_latents;
             int64_t hires_denoise_start = ggml_time_ms();
+            sd::Tensor<float> hires_control_image;
+            if (!latents.control_image.empty() &&
+                sd_version_is_z_image(sd->version) &&
+                sd->model_manager->registered_params_size({ModelComponent::ControlNet}) > 0) {
+                const int64_t hires_latent_w = request.hires.target_width / request.vae_scale_factor;
+                const int64_t hires_latent_h = request.hires.target_height / request.vae_scale_factor;
+                if (latents.control_image.shape()[0] != hires_latent_w ||
+                    latents.control_image.shape()[1] != hires_latent_h) {
+                    LOG_INFO("hires fix: re-encoding control latent for %dx%d", request.hires.target_width, request.hires.target_height);
+                    hires_control_image = encode_z_image_control_latent(sd,
+                                                                        sd_image_to_tensor(sd_img_gen_params->control_image,
+                                                                                           request.hires.target_width,
+                                                                                           request.hires.target_height));
+                    if (hires_control_image.empty()) {
+                        std::vector<int64_t> ctrl_shape = latents.control_image.shape();
+                        ctrl_shape[0]                   = hires_latent_w;
+                        ctrl_shape[1]                   = hires_latent_h;
+                        hires_control_image             = sd::ops::interpolate(latents.control_image, ctrl_shape, sd::ops::InterpolateMode::Bicubic);
+                    }
+                } else {
+                    hires_control_image = latents.control_image;
+                }
+            }
             for (int b = 0; b < (int)final_latents.size(); b++) {
                 if (sd->get_cancel_flag() == SD_CANCEL_ALL) {
                     LOG_ERROR("cancelling generation during hires fix");
                     return false;
                 }
-                int64_t cur_seed = request.seed + b;
+                int64_t cur_seed = request.seed_for_batch(b);
                 sd->rng->manual_seed(cur_seed);
                 sd->sampler_rng->manual_seed(cur_seed);
 
+                auto hires_source          = sd->version == VERSION_P_H3_IMAGE
+                                                 ? sd::ops::slice(final_latents[b], 3, 0, 24)
+                                                 : final_latents[b];
                 sd::Tensor<float> upscaled = upscale_hires_latent(sd,
-                                                                  final_latents[b],
+                                                                  hires_source,
                                                                   request,
                                                                   hires_upscaler.get());
                 if (upscaled.empty()) {
                     return false;
+                }
+                if (sd->version == VERSION_P_H3_IMAGE) {
+                    upscaled = pack_ph3_image_latent(upscaled, final_latents[b]);
                 }
 
                 sd::Tensor<float> noise = sd::randn_like<float>(upscaled, sd->rng);
@@ -1006,7 +1138,7 @@ namespace sd::pipeline {
                                                         embeds.cond,
                                                         embeds.uncond,
                                                         embeds.img_uncond,
-                                                        latents.control_image,
+                                                        !hires_control_image.empty() ? hires_control_image : latents.control_image,
                                                         request.control_strength,
                                                         request.guidance,
                                                         plan.eta,
@@ -1052,6 +1184,19 @@ namespace sd::pipeline {
             return false;
         }
 
+        if (infos_out) {
+            try {
+                infos_out->assign(num_images, info);
+                // Layers and frames decoded from the same latent share its seed.
+                const int images_per_latent = num_images / static_cast<int>(final_latents.size());
+                for (int i = 0; i < num_images; ++i) {
+                    (*infos_out)[i]["seed"] = std::to_string(request.seed_for_batch(i / images_per_latent));
+                }
+            } catch (...) {
+                free_sd_images(result, num_images);
+                throw;
+            }
+        }
         sd->lora_stat();
 
         int64_t t1 = ggml_time_ms();

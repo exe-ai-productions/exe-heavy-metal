@@ -815,6 +815,94 @@ static bool ggml_metal_fusion_check_scale_cpy(
     return true;
 }
 
+// (CONT +) SCALE + PERMUTE + CPY to F16, as attention emits for its values when it scales them before the permute:
+// the CPY reads a PERMUTE of the SCALE. The fused pass reads the first node's source through the same permute
+// (ggml_metal_fusion_permuted_source), so its rows stay the source's rows and the CPY's flat order is kept. The
+// SCALE (and the CONT) must be read by nothing else
+static bool ggml_metal_fusion_check_scale_perm_cpy(
+        const ggml_metal_fusion       * fusion,
+        const ggml_tensor * const     * nodes,
+        const ggml_cgraph             * gf,
+        const int                     * node_idxs,
+              int                       idx,
+              ggml_metal_fusion_mode    mode) {
+    const int n_ops = (int) fusion->ops.size();
+
+    const ggml_tensor * scale = nodes[n_ops - 2];
+    const ggml_tensor * cpy   = nodes[n_ops - 1];
+    const ggml_tensor * perm  = cpy->src[0];
+
+    if (scale->op != GGML_OP_SCALE || cpy->op != GGML_OP_CPY || !perm || perm->op != GGML_OP_PERMUTE ||
+        perm->src[0] != scale || perm->view_src != scale || perm->view_offs != 0) {
+        return false;
+    }
+    if (n_ops == 3 && (scale->src[0] != nodes[0] || !ggml_is_contiguous(nodes[0]))) {
+        return false;
+    }
+
+    // the permute is applied to the first node's source, so a CONT must not reshape it (ggml_cont_4d is a CONT too)
+    const ggml_tensor * src = nodes[0]->src[0];
+    if (!ggml_are_same_shape(src, nodes[0])) {
+        return false;
+    }
+    for (int j = 0; j < n_ops - 1; j++) {
+        if (nodes[j]->type != GGML_TYPE_F32) {
+            return false;
+        }
+    }
+    // the permute keeps the rows (axis 0 stays first), the destination is one contiguous F16 tensor
+    if (ggml_get_op_params_i32(perm, 0) != 0 || src->type != GGML_TYPE_F32 || !ggml_is_contiguous_rows(src) ||
+        !ggml_is_contiguous(scale) || cpy->type != GGML_TYPE_F16 || !ggml_is_contiguous(cpy) ||
+        !ggml_are_same_shape(perm, cpy)) {
+        return false;
+    }
+
+    // rows of 4 values are read as float4 and written as half4 (the unary kernel's _4 variant)
+    if (src->ne[0] % 4 == 0) {
+        for (int i = 1; i < GGML_MAX_DIMS; i++) {
+            if (src->nb[i] % 16 != 0 || cpy->nb[i] % 8 != 0) {
+                return false;
+            }
+        }
+        if (mode == GGML_METAL_FUSION_FULL && ((uintptr_t) src->data % 16 != 0 || (uintptr_t) cpy->data % 8 != 0)) {
+            return false;
+        }
+    }
+
+    // the graph nodes from the first node to the CPY: the group and the PERMUTE, nothing else
+    int raw[GGML_METAL_FUSION_MAX];
+    ggml_op ops[GGML_METAL_FUSION_MAX];
+    int n = 0;
+    for (int i = node_idxs[idx]; i <= node_idxs[idx + n_ops - 1]; i++) {
+        if (n == GGML_METAL_FUSION_MAX) {
+            return false;
+        }
+        const ggml_tensor * node = gf->nodes[i];
+        if (node != perm && std::find(nodes, nodes + n_ops, node) == nodes + n_ops) {
+            return false;
+        }
+        raw[n] = i;
+        ops[n] = node->op;
+        n++;
+    }
+
+    const int outputs[1] = { raw[n - 1] };
+    if (!ggml_can_fuse_subgraph_ext(gf, raw, n, ops, outputs, 1)) {
+        return false;
+    }
+
+    return mode == GGML_METAL_FUSION_STRUCTURAL || !ggml_metal_fusion_overlap(cpy, src);
+}
+
+void ggml_metal_fusion_permuted_source(const ggml_tensor * src, const ggml_tensor * perm, ggml_tensor * out) {
+    *out = *src;
+    for (int k = 0; k < GGML_MAX_DIMS; k++) {
+        const int axis = ggml_get_op_params_i32(perm, k);
+        out->ne[axis] = src->ne[k];
+        out->nb[axis] = src->nb[k];
+    }
+}
+
 // CONT + CPY to F16, with RESHAPE or VIEW nodes of the CONT between them: one copy reads the CONT's F32 source with
 // its strides and writes the F16 destination in the CONT's order (both are contiguous, so the CPY's flat order is
 // the CONT's). the CONT and the nodes between must be read by nothing else
@@ -863,6 +951,124 @@ static bool ggml_metal_fusion_check_cont_cpy(
     }
 
     return mode == GGML_METAL_FUSION_STRUCTURAL || !ggml_metal_fusion_overlap(cpy, cont->src[0]);
+}
+
+// MUL + ADD (+ ADD): m = b*s, then a + m (either operand order), then + t: the ADD_MUL_ID kernel computes
+// (a + b*s) + t with the product rounded before the sums, so the result has the bits of the three kernels. b and a
+// have the output's shape; s and t have its row width and broadcast over it (ggml_can_repeat)
+bool ggml_metal_fusion_mul_add_operands(
+        const ggml_tensor * const * nodes, int n_ops,
+        const ggml_tensor ** a, const ggml_tensor ** b, const ggml_tensor ** s, const ggml_tensor ** t) {
+    const ggml_tensor * mul = nodes[0];
+    const ggml_tensor * add = nodes[1];
+
+    // the MUL's full-shape operand is b, the other one is s (b first when both have the full shape)
+    if (ggml_are_same_shape(mul->src[0], mul)) {
+        *b = mul->src[0];
+        *s = mul->src[1];
+    } else if (ggml_are_same_shape(mul->src[1], mul)) {
+        *b = mul->src[1];
+        *s = mul->src[0];
+    } else {
+        return false;
+    }
+
+    *a = add->src[0] == mul ? add->src[1] : add->src[0];
+    if (*a == mul) {
+        return false;
+    }
+
+    *t = nullptr;
+    if (n_ops == 3) {
+        const ggml_tensor * add2 = nodes[2];
+        *t = add2->src[0] == add ? add2->src[1] : add2->src[0];
+        if (*t == add) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool ggml_metal_fusion_check_mul_add(
+        const ggml_metal_fusion       * fusion,
+        const ggml_tensor * const     * nodes,
+        const ggml_cgraph             * gf,
+        const int                     * node_idxs,
+              int                       idx,
+              ggml_metal_fusion_mode    mode) {
+    GGML_UNUSED(gf);
+    GGML_UNUSED(node_idxs);
+    GGML_UNUSED(idx);
+    GGML_UNUSED(mode);
+
+    const int n_ops = (int) fusion->ops.size();
+
+    const ggml_tensor * a;
+    const ggml_tensor * b;
+    const ggml_tensor * s;
+    const ggml_tensor * t;
+    if (!ggml_metal_fusion_mul_add_operands(nodes, n_ops, &a, &b, &s, &t)) {
+        return false;
+    }
+
+    const ggml_tensor * dst = nodes[n_ops - 1];
+
+    const auto f32_rows = [](const ggml_tensor * x) {
+        return x->type == GGML_TYPE_F32 && x->nb[0] == sizeof(float);
+    };
+    for (int j = 0; j < n_ops; j++) {
+        if (nodes[j]->type != GGML_TYPE_F32) {
+            return false;
+        }
+    }
+    if (!f32_rows(a) || !f32_rows(b) || !f32_rows(s) || !f32_rows(dst) || (t && !f32_rows(t))) {
+        return false;
+    }
+
+    // the kernel broadcasts s and t row by row over a, with 32-bit counts
+    if (!ggml_are_same_shape(a, dst) || !ggml_are_same_shape(b, dst) ||
+        s->ne[0] != dst->ne[0] || !ggml_can_repeat(s, dst) ||
+        (t && (t->ne[0] != dst->ne[0] || !ggml_can_repeat(t, dst)))) {
+        return false;
+    }
+    if (dst->ne[0] > INT32_MAX || dst->ne[1] > UINT32_MAX ||
+        s->ne[1] > INT32_MAX || s->ne[2] > INT32_MAX || s->ne[3] > INT32_MAX) {
+        return false;
+    }
+
+    return true;
+}
+
+// REPEAT + MUL: the MUL reads the REPEAT as one operand, the other operand has the MUL's shape; the binary kernel
+// broadcasts the REPEAT's source over it with the same products (ggml_mul broadcasts what ggml_can_repeat allows)
+static bool ggml_metal_fusion_check_repeat_mul(
+        const ggml_metal_fusion       * fusion,
+        const ggml_tensor * const     * nodes,
+        const ggml_cgraph             * gf,
+        const int                     * node_idxs,
+              int                       idx,
+              ggml_metal_fusion_mode    mode) {
+    GGML_UNUSED(fusion);
+    GGML_UNUSED(gf);
+    GGML_UNUSED(node_idxs);
+    GGML_UNUSED(idx);
+    GGML_UNUSED(mode);
+
+    const ggml_tensor * rep = nodes[0];
+    const ggml_tensor * mul = nodes[1];
+    const ggml_tensor * src = rep->src[0];
+    const ggml_tensor * x   = mul->src[0] == rep ? mul->src[1] : mul->src[0];
+
+    if (x == rep || !ggml_are_same_shape(x, mul) || !ggml_can_repeat(src, mul)) {
+        return false;
+    }
+    if (rep->type != GGML_TYPE_F32 || mul->type != GGML_TYPE_F32 || src->type != GGML_TYPE_F32 ||
+        x->type != GGML_TYPE_F32 || !ggml_is_contiguous_rows(src) || !ggml_is_contiguous_rows(x)) {
+        return false;
+    }
+
+    return true;
 }
 
 // ---- patterns ------------------------------------------------------------
@@ -928,6 +1134,12 @@ static const std::vector<ggml_op> ops_mul_mat_bias            = { GGML_OP_MUL_MA
 static const std::vector<ggml_op> ops_scale_cpy      = { GGML_OP_SCALE, GGML_OP_CPY };
 static const std::vector<ggml_op> ops_cont_scale_cpy = { GGML_OP_CONT, GGML_OP_SCALE, GGML_OP_CPY };
 static const std::vector<ggml_op> ops_cont_cpy       = { GGML_OP_CONT, GGML_OP_CPY };
+static const std::vector<ggml_op> ops_scale_perm_cpy      = { GGML_OP_SCALE, GGML_OP_PERMUTE, GGML_OP_CPY };
+static const std::vector<ggml_op> ops_cont_scale_perm_cpy = { GGML_OP_CONT, GGML_OP_SCALE, GGML_OP_PERMUTE, GGML_OP_CPY };
+
+static const std::vector<ggml_op> ops_mul_add     = { GGML_OP_MUL, GGML_OP_ADD };
+static const std::vector<ggml_op> ops_repeat_mul  = { GGML_OP_REPEAT, GGML_OP_MUL };
+static const std::vector<ggml_op> ops_mul_add_add = { GGML_OP_MUL, GGML_OP_ADD, GGML_OP_ADD };
 
 static const std::vector<ggml_metal_fusion> ggml_metal_fusions = {
     { GGML_METAL_FUSION_NORM_MUL,       ops_norm_mul,               {},     false, ggml_metal_fusion_check_norm },
@@ -967,6 +1179,11 @@ static const std::vector<ggml_metal_fusion> ggml_metal_fusions = {
     { GGML_METAL_FUSION_SCALE_CPY,      ops_scale_cpy,              {},     false, ggml_metal_fusion_check_scale_cpy },
     { GGML_METAL_FUSION_SCALE_CPY,      ops_cont_scale_cpy,         {},     false, ggml_metal_fusion_check_scale_cpy },
     { GGML_METAL_FUSION_CONT_CPY,       ops_cont_cpy,               {},     true,  ggml_metal_fusion_check_cont_cpy },
+    { GGML_METAL_FUSION_SCALE_CPY,      ops_scale_perm_cpy,         {},     true,  ggml_metal_fusion_check_scale_perm_cpy },
+    { GGML_METAL_FUSION_SCALE_CPY,      ops_cont_scale_perm_cpy,    {},     true,  ggml_metal_fusion_check_scale_perm_cpy },
+    { GGML_METAL_FUSION_MUL_ADD,        ops_mul_add,                {},     false, ggml_metal_fusion_check_mul_add },
+    { GGML_METAL_FUSION_MUL_ADD,        ops_mul_add_add,            {},     false, ggml_metal_fusion_check_mul_add },
+    { GGML_METAL_FUSION_REPEAT_MUL,     ops_repeat_mul,             {},     false, ggml_metal_fusion_check_repeat_mul },
 };
 
 // ---- alloc deps -----------------------------------------------------------
